@@ -1,0 +1,1485 @@
+<!--
+  QuoteIQ — Location Based Pricing Optimizer v2.0
+  Original clustering logic: Abdelrahman Mohamed Galal
+  Enhanced with pricing engine, drive-time NN, multi-tab UI
+-->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>QuoteIQ — Pricing Optimizer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" crossorigin="">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; font-size: 14px; color: #1E293B; background: #F8FAFC; }
+
+    /* ── APP SHELL ── */
+    #app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+    /* ── TAB BAR ── */
+    #tab-bar {
+      display: flex; align-items: center; background: #fff;
+      border-bottom: 1px solid #E2E8F0; height: 50px; padding: 0 16px;
+      flex-shrink: 0; box-shadow: 0 1px 3px rgba(0,0,0,0.06); z-index: 2000;
+    }
+    .app-title { font-weight: 700; font-size: 15px; color: #1E293B; margin-right: 20px; letter-spacing: -0.3px; white-space: nowrap; }
+    .app-title span { color: #2563EB; }
+    .tabs { display: flex; gap: 2px; flex: 1; }
+    .tab-btn {
+      background: none; border: none; padding: 0 14px; height: 50px;
+      cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 500;
+      color: #64748B; border-bottom: 2px solid transparent; margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s; white-space: nowrap;
+    }
+    .tab-btn:hover { color: #2563EB; }
+    .tab-btn.active { color: #2563EB; border-bottom-color: #2563EB; }
+    #btn-help {
+      background: none; border: 1px solid #CBD5E1; border-radius: 50%;
+      width: 28px; height: 28px; cursor: pointer; font-size: 13px; color: #64748B;
+      display: flex; align-items: center; justify-content: center; font-weight: 700;
+      margin-left: 8px; flex-shrink: 0; transition: background 0.15s, color 0.15s;
+    }
+    #btn-help:hover { background: #EFF6FF; color: #2563EB; border-color: #2563EB; }
+
+    /* ── SETTINGS BAR ── */
+    #settings-bar {
+      background: #F1F5F9; border-bottom: 1px solid #E2E8F0;
+      padding: 7px 16px; display: flex; align-items: center; gap: 18px;
+      flex-shrink: 0; flex-wrap: wrap;
+    }
+    #settings-bar .bar-label {
+      font-size: 11px; font-weight: 700; color: #64748B;
+      text-transform: uppercase; letter-spacing: 0.6px; white-space: nowrap; margin-right: 2px;
+    }
+    .sf { display: flex; align-items: center; gap: 6px; }
+    .sf label { font-size: 12px; color: #475569; white-space: nowrap; }
+    .sf input {
+      width: 72px; padding: 4px 8px; border: 1px solid #BFDBFE;
+      border-radius: 4px; font-size: 12px; font-family: inherit;
+      background: #EFF6FF; color: #1E293B;
+    }
+    .sf input:focus { outline: 2px solid #2563EB; outline-offset: -1px; border-color: #2563EB; }
+    .sf.wide input { width: 200px; }
+
+    /* ── TAB CONTENT ── */
+    #tab-content { flex: 1; overflow: hidden; position: relative; }
+    .tab-panel { display: none; height: 100%; }
+    .tab-panel.active { display: flex; flex-direction: column; }
+
+    /* ── MAP TAB ── */
+    #tab-map.active { flex-direction: row !important; }
+    #map-sidebar {
+      width: 300px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #E2E8F0; overflow-y: auto;
+      display: flex; flex-direction: column;
+    }
+    .sb-header {
+      padding: 14px 16px 10px; border-bottom: 1px solid #E2E8F0;
+    }
+    .sb-header h3 { margin: 0; font-size: 14px; font-weight: 600; color: #1E293B; }
+    .sb-header p { margin: 4px 0 0; font-size: 11px; color: #94A3B8; }
+    #map { flex: 1; }
+    .sb-sec { padding: 12px 16px; border-bottom: 1px solid #F1F5F9; }
+    .sb-sec label {
+      display: block; font-size: 12px; font-weight: 500;
+      color: #475569; margin-bottom: 5px;
+    }
+    .sb-sec input[type="text"], .sb-sec input[type="file"] {
+      width: 100%; padding: 7px 10px; border: 1px solid #CBD5E1;
+      border-radius: 5px; font-size: 13px; font-family: inherit; background: #fff;
+    }
+    .sb-sec input[type="text"]:focus { outline: 2px solid #2563EB; outline-offset: -1px; }
+    .radio-group { display: flex; flex-direction: column; gap: 6px; }
+    .radio-group label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #1E293B; cursor: pointer; font-weight: 400; margin: 0; }
+    .radio-group input[type="radio"] { accent-color: #2563EB; width: 14px; height: 14px; }
+    .sb-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .sb-actions { padding: 12px 16px; display: flex; gap: 8px; flex-direction: column; }
+    .sb-actions .row2 { display: flex; gap: 8px; }
+    #progress-wrap { padding: 0 16px 12px; display: none; }
+    #progress-bar { width: 100%; height: 6px; border-radius: 3px; accent-color: #2563EB; }
+    #progress-status { font-size: 11px; color: #64748B; margin-top: 4px; }
+
+    /* ── CONTENT PANELS ── */
+    .content-panel { flex: 1; overflow-y: auto; padding: 24px; background: #F8FAFC; }
+    .ph { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+    .ph h2 { margin: 0; font-size: 18px; font-weight: 700; color: #1E293B; }
+    .ph-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* ── BUTTONS ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;
+      border-radius: 6px; font-family: inherit; font-size: 13px; font-weight: 500;
+      cursor: pointer; transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+      border: 1px solid transparent; white-space: nowrap;
+    }
+    .btn-primary { background: #2563EB; color: #fff; border-color: #2563EB; }
+    .btn-primary:hover:not(:disabled) { background: #1D4ED8; border-color: #1D4ED8; }
+    .btn-secondary { background: #fff; color: #2563EB; border-color: #2563EB; }
+    .btn-secondary:hover:not(:disabled) { background: #EFF6FF; }
+    .btn-outline { background: #fff; color: #475569; border-color: #CBD5E1; }
+    .btn-outline:hover:not(:disabled) { background: #F8FAFC; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-sm { padding: 5px 12px; font-size: 12px; }
+    .btn-full { width: 100%; justify-content: center; }
+    .btn-danger-link { background: none; border: none; color: #DC2626; font-size: 13px; cursor: pointer; padding: 3px 6px; font-family: inherit; }
+    .btn-danger-link:hover { color: #B91C1C; }
+
+    /* ── DASHBOARD ── */
+    .dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .dash-card { background: #fff; border: 1px solid #E2E8F0; border-radius: 8px; padding: 18px 20px; }
+    .dash-card h3 { margin: 0 0 12px; font-size: 11px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.7px; }
+    .metric-row { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; border-bottom: 1px solid #F1F5F9; }
+    .metric-row:last-child { border-bottom: none; }
+    .metric-label { font-size: 13px; color: #475569; }
+    .metric-value { font-size: 13px; font-weight: 600; color: #1E293B; }
+    .metric-value.blue { color: #2563EB; }
+    .metric-value.green { color: #16A34A; }
+    .metric-value.orange { color: #D97706; }
+    .no-data { text-align: center; padding: 40px 20px; color: #94A3B8; font-size: 13px; }
+    .no-data strong { display: block; font-size: 15px; color: #475569; margin-bottom: 6px; }
+    .checklist { list-style: none; padding: 0; margin: 0; }
+    .checklist li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #F1F5F9; font-size: 13px; color: #475569; }
+    .checklist li:last-child { border-bottom: none; }
+    .checklist input[type="checkbox"] { accent-color: #2563EB; width: 15px; height: 15px; cursor: pointer; flex-shrink: 0; }
+
+    /* ── TABLES (shared) ── */
+    .table-wrap { background: #fff; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden; }
+    .scroll-x { overflow-x: auto; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .data-table th {
+      background: #F8FAFC; padding: 10px 12px; text-align: left;
+      font-size: 12px; font-weight: 600; color: #475569;
+      border-bottom: 1px solid #E2E8F0; white-space: nowrap;
+      position: sticky; top: 0; z-index: 10;
+    }
+    .data-table td { padding: 7px 12px; border-bottom: 1px solid #F1F5F9; vertical-align: middle; white-space: nowrap; }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table tr:nth-child(even) td { background: #FAFAFA; }
+    .data-table tr:hover td { background: #EFF6FF !important; }
+    .td-calc { background: #F1F5F9 !important; color: #475569; }
+    .td-input { background: #EFF6FF !important; }
+    .td-input input {
+      width: 100%; min-width: 80px; border: 1px solid #BFDBFE; border-radius: 4px;
+      padding: 3px 6px; font-size: 12px; font-family: inherit; background: transparent; color: #1E293B;
+    }
+    .td-input input:focus { outline: 2px solid #2563EB; outline-offset: -1px; }
+    .col-r { text-align: right !important; }
+    .col-center { text-align: center !important; }
+    .pct-pill {
+      display: inline-block; padding: 2px 7px; border-radius: 12px;
+      font-size: 11px; font-weight: 600;
+    }
+    .pct-green { background: #DCFCE7; color: #15803D; }
+    .pct-blue  { background: #DBEAFE; color: #1D4ED8; }
+    .pct-orange{ background: #FEF3C7; color: #B45309; }
+    .pct-red   { background: #FEE2E2; color: #B91C1C; }
+
+    /* ── PROCESSED DATA: horizontally scrollable full-height ── */
+    #tab-processed .content-panel { padding: 16px 24px; }
+    .proc-table-wrap {
+      overflow: auto;
+      max-height: calc(100vh - 180px);
+      border: 1px solid #E2E8F0; border-radius: 8px; background: #fff;
+    }
+    .proc-table-wrap .data-table th { top: 0; }
+    th.calc-col { background: #EEF2FF !important; color: #3730A3 !important; }
+
+    /* ── SIDE PANEL (comp areas / pricing) ── */
+    .two-col { display: grid; grid-template-columns: 1fr 280px; gap: 20px; align-items: start; }
+    .side-info-card { background: #fff; border: 1px solid #E2E8F0; border-radius: 8px; padding: 18px; }
+    .side-info-card h4 { margin: 0 0 12px; font-size: 12px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; }
+    .side-field { margin-bottom: 12px; }
+    .side-field label { display: block; font-size: 12px; color: #475569; margin-bottom: 4px; font-weight: 500; }
+    .side-field input {
+      width: 100%; padding: 7px 10px; border: 1px solid #BFDBFE; border-radius: 5px;
+      font-size: 13px; font-family: inherit; background: #EFF6FF; color: #1E293B;
+    }
+    .side-field input:focus { outline: 2px solid #2563EB; outline-offset: -1px; }
+    .side-note { font-size: 11px; color: #94A3B8; margin-top: 8px; line-height: 1.5; }
+
+    /* ── HELP MODAL ── */
+    #help-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(15,23,42,0.55); z-index: 9000;
+      align-items: center; justify-content: center;
+    }
+    #help-overlay.open { display: flex; }
+    #help-modal {
+      background: #fff; border-radius: 10px; width: 620px;
+      max-width: 96vw; max-height: 88vh; overflow: hidden;
+      display: flex; flex-direction: column;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.25);
+    }
+    #help-modal-hdr {
+      padding: 16px 20px; border-bottom: 1px solid #E2E8F0;
+      display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+    }
+    #help-modal-hdr h2 { margin: 0; font-size: 16px; font-weight: 700; }
+    #help-modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: #94A3B8; line-height: 1; padding: 2px 6px; }
+    #help-modal-close:hover { color: #1E293B; }
+    #help-modal-body { overflow-y: auto; padding: 20px; }
+    .help-sec { margin-bottom: 22px; }
+    .help-sec h3 { font-size: 12px; font-weight: 700; color: #2563EB; text-transform: uppercase; letter-spacing: 0.6px; margin: 0 0 10px; }
+    .help-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 6px; }
+    .help-table th { background: #F8FAFC; padding: 7px 10px; text-align: left; font-weight: 600; color: #475569; border: 1px solid #E2E8F0; }
+    .help-table td { padding: 6px 10px; border: 1px solid #E2E8F0; vertical-align: top; }
+    .help-table tr:nth-child(even) td { background: #F8FAFC; }
+    .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 700; }
+    .b-req { background: #DCFCE7; color: #15803D; }
+    .b-rec { background: #DBEAFE; color: #1D4ED8; }
+    .b-opt { background: #F1F5F9; color: #475569; }
+    .help-param { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px solid #F1F5F9; font-size: 12px; }
+    .help-param:last-child { border-bottom: none; }
+    .help-param-name { font-weight: 600; color: #1E293B; min-width: 160px; }
+    .help-param-desc { color: #475569; }
+
+    /* ── PDF PRINT AREA (off-screen) ── */
+    #pdf-area {
+      position: fixed; left: -9999px; top: 0;
+      width: 900px; background: #fff; padding: 40px;
+      font-family: 'Inter', sans-serif; font-size: 13px; color: #1E293B;
+    }
+    .pdf-title { font-size: 22px; font-weight: 700; color: #1E293B; margin-bottom: 4px; }
+    .pdf-subtitle { font-size: 13px; color: #64748B; margin-bottom: 30px; }
+    .pdf-section { margin-bottom: 28px; }
+    .pdf-section h2 { font-size: 14px; font-weight: 700; color: #2563EB; border-bottom: 2px solid #DBEAFE; padding-bottom: 6px; margin: 0 0 14px; }
+    .pdf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 16px; }
+    .pdf-metric { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #F1F5F9; font-size: 12px; }
+    .pdf-metric-label { color: #475569; }
+    .pdf-metric-value { font-weight: 600; }
+    .pdf-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .pdf-table th { background: #F8FAFC; padding: 8px 10px; text-align: left; font-weight: 600; color: #475569; border: 1px solid #E2E8F0; font-size: 11px; }
+    .pdf-table td { padding: 6px 10px; border: 1px solid #E2E8F0; }
+    .pdf-table tr:nth-child(even) td { background: #F8FAFC; }
+    .pdf-checklist { list-style: none; padding: 0; margin: 0; }
+    .pdf-checklist li { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid #F1F5F9; font-size: 12px; color: #475569; }
+    .pdf-check-box { width: 13px; height: 13px; border: 1.5px solid #CBD5E1; border-radius: 2px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #2563EB; font-weight: 700; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ═══════════════════════════════════════════ TAB BAR -->
+  <div id="tab-bar">
+    <div class="app-title">Quote<span>IQ</span></div>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="map">Map</button>
+      <button class="tab-btn" data-tab="dashboard">Dashboard</button>
+      <button class="tab-btn" data-tab="processed">Processed Data</button>
+      <button class="tab-btn" data-tab="comp">Comp Areas</button>
+      <button class="tab-btn" data-tab="minprice">Min Base Price</button>
+      <button class="tab-btn" data-tab="preferred">Preferred Price</button>
+    </div>
+    <button id="btn-help" onclick="openHelp()" title="Help — required columns &amp; parameters">?</button>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ SETTINGS BAR -->
+  <div id="settings-bar">
+    <span class="bar-label">Pricing Drivers</span>
+    <div class="sf"><label>Qty Discount</label><input type="text" id="s-qty-disc" value="0.3" onchange="recalculateAll()"></div>
+    <div class="sf"><label>Extra $/Mile</label><input type="text" id="s-extra-mile" value="15" onchange="recalculateAll()"></div>
+    <div class="sf"><label>PI Rate</label><input type="text" id="s-pi-rate" value="0.1" onchange="recalculateAll()"></div>
+    <div class="sf"><label>Pref Buffer</label><input type="text" id="s-pref-buf" value="0.4" onchange="recalculateAll()"></div>
+    <div class="sf wide"><label>ORS API Key</label><input type="text" id="s-ors-key" placeholder="Leave blank for straight-line distance"></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ TAB CONTENT -->
+  <div id="tab-content">
+
+    <!-- ─── MAP TAB ─── -->
+    <div id="tab-map" class="tab-panel active">
+      <div id="map-sidebar">
+        <div class="sb-header">
+          <h3>Clustering Options</h3>
+          <p>Upload your Excel file and run DBSCAN clustering</p>
+        </div>
+
+        <div class="sb-sec">
+          <label>Excel File</label>
+          <input type="file" id="excelFile" accept=".xlsx,.xls">
+        </div>
+
+        <div class="sb-sec">
+          <label style="margin-bottom:8px">Location Mode</label>
+          <div class="radio-group">
+            <label><input type="radio" name="geocodeOption" value="latlong" checked><span>Use Latitude / Longitude columns</span></label>
+            <label><input type="radio" name="geocodeOption" value="address"><span>Geocode Address columns</span></label>
+          </div>
+        </div>
+
+        <div class="sb-sec">
+          <div class="sb-row">
+            <div>
+              <label>Epsilon (miles)</label>
+              <input type="text" id="clusterRadius" placeholder="e.g. 2" onchange="syncEpsilon(this.value)">
+            </div>
+            <div>
+              <label>Min Points</label>
+              <input type="text" id="minPoints" placeholder="e.g. 2">
+            </div>
+          </div>
+        </div>
+
+        <div class="sb-actions">
+          <button class="btn btn-primary btn-full" onclick="processFile()">Calculate Clusters</button>
+          <div class="row2">
+            <button class="btn btn-secondary btn-full" id="exportBtn" onclick="exportExcel()" disabled>Export Excel</button>
+          </div>
+        </div>
+
+        <div id="progress-wrap">
+          <progress id="progress-bar" max="100" value="0"></progress>
+          <div id="progress-status"></div>
+        </div>
+      </div>
+      <div id="map"></div>
+    </div>
+
+    <!-- ─── DASHBOARD TAB ─── -->
+    <div id="tab-dashboard" class="tab-panel">
+      <div class="content-panel">
+        <div class="ph">
+          <h2>Dashboard</h2>
+          <div class="ph-actions">
+            <button class="btn btn-secondary" onclick="exportPDF()">Export PDF Report</button>
+          </div>
+        </div>
+        <div id="dash-content">
+          <div class="no-data"><strong>No data yet</strong>Upload an Excel file and run clustering on the Map tab first.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── PROCESSED DATA TAB ─── -->
+    <div id="tab-processed" class="tab-panel">
+      <div class="content-panel">
+        <div class="ph">
+          <h2>Processed Data</h2>
+          <div class="ph-actions">
+            <button class="btn btn-secondary" id="exportBtn2" onclick="exportExcel()" disabled>Export Excel</button>
+          </div>
+        </div>
+        <div id="proc-content">
+          <div class="no-data"><strong>No data yet</strong>Upload an Excel file and run clustering on the Map tab first.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── COMP AREAS TAB ─── -->
+    <div id="tab-comp" class="tab-panel">
+      <div class="content-panel">
+        <div class="ph">
+          <h2>Comp Areas</h2>
+          <div class="ph-actions">
+            <button class="btn btn-primary btn-sm" onclick="addCompRow()">+ Add Row</button>
+          </div>
+        </div>
+        <div class="two-col">
+          <div class="table-wrap scroll-x">
+            <table class="data-table" id="comp-table">
+              <thead>
+                <tr>
+                  <th>Comp Area</th>
+                  <th>Cluster #</th>
+                  <th>Cont Size (yd)</th>
+                  <th class="col-r">Price ($)</th>
+                  <th class="col-r">Price / Yard</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="comp-tbody"></tbody>
+            </table>
+          </div>
+          <div>
+            <div class="side-info-card">
+              <h4>Notes</h4>
+              <p class="side-note">Enter your competitors&apos; name, service area cluster number, container size, and monthly rate.</p>
+              <p class="side-note">The <strong>Cluster #</strong> must match a cluster ID from the map clustering run. These prices will be used as the Price Match floor when calculating New Rates.</p>
+              <p class="side-note" style="margin-top:10px; color:#D97706">If a customer&apos;s current price already exceeds the competitor price, no increase is applied (hold pricing).</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── MIN BASE PRICE TAB ─── -->
+    <div id="tab-minprice" class="tab-panel">
+      <div class="content-panel">
+        <div class="ph">
+          <h2>Min Base Price</h2>
+          <div class="ph-actions">
+            <button class="btn btn-primary btn-sm" onclick="addMinRow()">+ Add Row</button>
+          </div>
+        </div>
+        <div class="two-col">
+          <div class="table-wrap scroll-x">
+            <table class="data-table" id="min-table">
+              <thead>
+                <tr>
+                  <th>Cont Size (yd)</th>
+                  <th class="col-r">Min Base Price ($)</th>
+                  <th class="col-r">Price / Yard</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="min-tbody"></tbody>
+            </table>
+          </div>
+          <div>
+            <div class="side-info-card">
+              <h4>Discount Parameters</h4>
+              <div class="side-field">
+                <label>Container Size Discount Rate</label>
+                <input type="text" id="min-discount-rate" value="0.0525" onchange="renderMinPrices()">
+              </div>
+              <div class="side-field">
+                <label>Starting $ per Yard</label>
+                <input type="text" id="min-start-pyard" value="17.60" onchange="renderMinPrices()">
+              </div>
+              <p class="side-note">This should be the <strong>lowest price you would accept</strong>. If a competitor&apos;s price is below your minimum, this rate overrides the price match.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── PREFERRED PRICE TAB ─── -->
+    <div id="tab-preferred" class="tab-panel">
+      <div class="content-panel">
+        <div class="ph">
+          <h2>Preferred Price</h2>
+          <div class="ph-actions">
+            <button class="btn btn-primary btn-sm" onclick="addPrefRow()">+ Add Row</button>
+          </div>
+        </div>
+        <div class="two-col">
+          <div class="table-wrap scroll-x">
+            <table class="data-table" id="pref-table">
+              <thead>
+                <tr>
+                  <th>Cont Size (yd)</th>
+                  <th class="col-r">Preferred Price ($)</th>
+                  <th class="col-r">Price / Yard</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="pref-tbody"></tbody>
+            </table>
+          </div>
+          <div>
+            <div class="side-info-card">
+              <h4>Notes</h4>
+              <p class="side-note">These rates should be your <strong>average target prices</strong> to help prevent price erosion.</p>
+              <p class="side-note">The Preferred Price is adjusted upward for isolated accounts (those beyond Epsilon miles from any neighbor) using the <strong>Extra $/Mile</strong> driver.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tab-content -->
+
+  <!-- ═══════════════════════════════════════════ HELP MODAL -->
+  <div id="help-overlay" onclick="closeHelpOutside(event)">
+    <div id="help-modal">
+      <div id="help-modal-hdr">
+        <h2>Help — Required Columns &amp; Parameters</h2>
+        <button id="help-modal-close" onclick="closeHelp()">×</button>
+      </div>
+      <div id="help-modal-body">
+
+        <div class="help-sec">
+          <h3>Mode 1 — Use Latitude / Longitude</h3>
+          <table class="help-table">
+            <thead><tr><th>Column Name</th><th>Required</th><th>Format / Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>Account#</code></td><td><span class="badge b-req">Required</span></td><td>Unique ID for each service line — used to identify nearest neighbor</td></tr>
+              <tr><td><code>Latitude</code></td><td><span class="badge b-req">Required</span></td><td>Decimal degrees, e.g. <code>33.1234</code></td></tr>
+              <tr><td><code>Longitude</code></td><td><span class="badge b-req">Required</span></td><td>Decimal degrees, e.g. <code>-98.5678</code></td></tr>
+              <tr><td><code>Svc_Code_Alpha</code></td><td><span class="badge b-rec">Recommended</span></td><td>Used to derive container size (e.g. <code>F2Y1W1</code> → 2 yd, <code>RESCRT1W1</code> → 0.5 yd)</td></tr>
+              <tr><td><code>Amount</code></td><td><span class="badge b-rec">Recommended</span></td><td>Monthly service price — used as Current Price in pricing engine</td></tr>
+              <tr><td><code>Mult</code></td><td><span class="badge b-rec">Recommended</span></td><td>Quantity / multiplier — used to compute total new revenue</td></tr>
+              <tr><td><code>TotalAmount</code></td><td><span class="badge b-rec">Recommended</span></td><td>Amount × Mult — used in Dashboard revenue summary</td></tr>
+              <tr><td>All other columns</td><td><span class="badge b-opt">Optional</span></td><td>Preserved in export as-is</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="help-sec">
+          <h3>Mode 2 — Geocode Address</h3>
+          <p style="font-size:12px;color:#475569;margin:0 0 8px">Replace Latitude/Longitude with these four address columns:</p>
+          <table class="help-table">
+            <thead><tr><th>Column Name</th><th>Required</th><th>Example</th></tr></thead>
+            <tbody>
+              <tr><td><code>Account#</code></td><td><span class="badge b-req">Required</span></td><td>Unique service line ID</td></tr>
+              <tr><td><code>Service Add Num</code></td><td><span class="badge b-req">Required</span></td><td><code>1234</code></td></tr>
+              <tr><td><code>Service Address</code></td><td><span class="badge b-req">Required</span></td><td><code>Main St</code></td></tr>
+              <tr><td><code>Service City</code></td><td><span class="badge b-req">Required</span></td><td><code>Graham</code></td></tr>
+              <tr><td><code>Service State</code></td><td><span class="badge b-req">Required</span></td><td><code>TX</code></td></tr>
+              <tr><td><code>Svc_Code_Alpha</code>, <code>Amount</code>, <code>Mult</code></td><td><span class="badge b-rec">Recommended</span></td><td>Same as Mode 1</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="help-sec">
+          <h3>Cluster Parameters</h3>
+          <div class="help-param"><span class="help-param-name">Epsilon (miles)</span><span class="help-param-desc">Maximum radius between two points for one to be considered a neighbor of the other. Start with 1–5 miles for dense urban data, 10–25 for rural.</span></div>
+          <div class="help-param"><span class="help-param-name">Min Points</span><span class="help-param-desc">Minimum number of points required to form a cluster. Points that don&apos;t meet this threshold are marked as noise (shown in black on the map).</span></div>
+        </div>
+
+        <div class="help-sec">
+          <h3>Pricing Driver Parameters</h3>
+          <div class="help-param"><span class="help-param-name">ORS API Key</span><span class="help-param-desc">Free key from openrouteservice.org. When provided, nearest neighbor is found by drive time rather than straight-line distance. Leave blank to use straight-line miles.</span></div>
+          <div class="help-param"><span class="help-param-name">Qty Discount</span><span class="help-param-desc">Discount rate applied to the Preferred Price NN Adjusted when a service line has Qty &gt; 1 (e.g. 0.3 = 30% off preferred price).</span></div>
+          <div class="help-param"><span class="help-param-name">Extra $/Mile</span><span class="help-param-desc">Dollar amount added per mile beyond Epsilon for accounts isolated from the cluster. Accounts within Epsilon get no extra charge.</span></div>
+          <div class="help-param"><span class="help-param-name">PI Rate</span><span class="help-param-desc">Target price increase rate applied to the current price (e.g. 0.1 = 10%). The New Rate will be at least Current Price × (1 + PI Rate), floored by Min Base Price.</span></div>
+          <div class="help-param"><span class="help-param-name">Pref Buffer</span><span class="help-param-desc">Informational buffer on the Preferred Price (stored in state, displayed on Dashboard). Does not currently affect New Rate calculation.</span></div>
+        </div>
+
+        <div class="help-sec">
+          <h3>Svc_Code_Alpha → Container Size Mapping</h3>
+          <table class="help-table">
+            <thead><tr><th>Code Pattern</th><th>Container Size</th></tr></thead>
+            <tbody>
+              <tr><td><code>F2Y...</code>, <code>R2Y...</code></td><td>2 yd</td></tr>
+              <tr><td><code>F3Y...</code>, <code>R3Y...</code></td><td>3 yd</td></tr>
+              <tr><td><code>F8Y...</code>, <code>R8Y...</code></td><td>8 yd</td></tr>
+              <tr><td><code>RESCRT...</code>, <code>ADDCART...</code>, <code>RESCRTSNR</code></td><td>0.5 yd (residential cart)</td></tr>
+              <tr><td>Any <code>F{n}Y...</code> or <code>R{n}Y...</code></td><td><em>n</em> yd (extracted from code)</td></tr>
+              <tr><td>Anything else</td><td>0.5 yd (default)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ PDF PRINT AREA -->
+  <div id="pdf-area"></div>
+
+</div><!-- /app -->
+
+<!-- ═══════════════════════════════════════════ SCRIPTS -->
+<script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js" crossorigin=""></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/@turf/turf/turf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════
+const state = {
+  features: [],       // GeoJSON features post-clustering
+  inputFileName: '',
+
+  compAreas: [],      // { compArea, cluster, contSize, price }
+
+  minPrices: [
+    { contSize: 0.5, minBasePrice: 38.10 },
+    { contSize: 1.5, minBasePrice: 102.62 },
+    { contSize: 2,   minBasePrice: 129.65 },
+    { contSize: 3,   minBasePrice: 174.59 },
+    { contSize: 4,   minBasePrice: 208.98 },
+    { contSize: 6,   minBasePrice: 252.65 },
+    { contSize: 8,   minBasePrice: 271.51 }
+  ],
+
+  prefPrices: [
+    { contSize: 0.5, prefPrice: 78.83  },
+    { contSize: 1.5, prefPrice: 159.39 },
+    { contSize: 2,   prefPrice: 185.28 },
+    { contSize: 3,   prefPrice: 221.12 },
+    { contSize: 4,   prefPrice: 249.55 },
+    { contSize: 6,   prefPrice: 326.50 },
+    { contSize: 8,   prefPrice: 385.43 }
+  ]
+};
+
+// Leaflet instances
+let map, pointsLayer;
+
+// ═══════════════════════════════════════════════════════
+// SETTINGS HELPERS
+// ═══════════════════════════════════════════════════════
+function getSettings() {
+  return {
+    epsilon:            parseFloat(document.getElementById('clusterRadius').value) || 2,
+    minPoints:          parseInt(document.getElementById('minPoints').value) || 2,
+    quantityDiscount:   parseFloat(document.getElementById('s-qty-disc').value) || 0.3,
+    extraChargePerMile: parseFloat(document.getElementById('s-extra-mile').value) || 15,
+    priceIncreaseRate:  parseFloat(document.getElementById('s-pi-rate').value) || 0.1,
+    prefBuffer:         parseFloat(document.getElementById('s-pref-buf').value) || 0.4,
+    orsKey:             document.getElementById('s-ors-key').value.trim()
+  };
+}
+
+function syncEpsilon(val) {
+  // epsilon from map sidebar → settings bar (if we add one there later)
+  recalculateAll();
+}
+
+// ═══════════════════════════════════════════════════════
+// TAB MANAGEMENT
+// ═══════════════════════════════════════════════════════
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + tabId).classList.add('active');
+  document.querySelector(`.tab-btn[data-tab="${tabId}"]`).classList.add('active');
+  if (tabId === 'map' && map) setTimeout(() => map.invalidateSize(), 50);
+  if (tabId === 'dashboard') renderDashboard();
+  if (tabId === 'processed') renderProcessedData();
+}
+
+// ═══════════════════════════════════════════════════════
+// HELP MODAL
+// ═══════════════════════════════════════════════════════
+function openHelp() { document.getElementById('help-overlay').classList.add('open'); }
+function closeHelp() { document.getElementById('help-overlay').classList.remove('open'); }
+function closeHelpOutside(e) { if (e.target.id === 'help-overlay') closeHelp(); }
+
+// ═══════════════════════════════════════════════════════
+// PRICING ENGINE
+// ═══════════════════════════════════════════════════════
+function getContainerSize(svcCode) {
+  if (!svcCode) return 0.5;
+  const s = String(svcCode).trim();
+  if (/RESCRT|ADDCART|SENRES|ADDYRD/i.test(s)) return 0.5;
+  const m = s.match(/^[FRfr](\d+(?:\.\d+)?)Y/i);
+  if (m) return parseFloat(m[1]);
+  return 0.5;
+}
+
+function getPriceMatch(clusterId, contSize) {
+  if (clusterId == null || clusterId === '' || clusterId === -1) return 0;
+  const comp = state.compAreas.find(c =>
+    String(c.cluster).trim() === String(clusterId).trim() &&
+    Math.abs(parseFloat(c.contSize) - parseFloat(contSize)) < 0.01
+  );
+  return comp ? (parseFloat(comp.price) || 0) : 0;
+}
+
+function getMinPrice(contSize) {
+  const e = state.minPrices.find(p => Math.abs(parseFloat(p.contSize) - parseFloat(contSize)) < 0.01);
+  return e ? (parseFloat(e.minBasePrice) || 0) : 0;
+}
+
+function getPrefPrice(contSize) {
+  const e = state.prefPrices.find(p => Math.abs(parseFloat(p.contSize) - parseFloat(contSize)) < 0.01);
+  return e ? (parseFloat(e.prefPrice) || 0) : 0;
+}
+
+function calcRowPricing(feature) {
+  const props = feature.properties;
+  const s = getSettings();
+
+  const contSize    = getContainerSize(props['Svc_Code_Alpha']);
+  const currentPrice= parseFloat(props['Amount']) || 0;
+  const qty         = parseFloat(props['Mult']) || 1;
+  const distMiles   = parseFloat(props['distance_to_nearest']) || 0;
+  const clusterId   = props['cluster'];
+
+  const priceMatch  = getPriceMatch(clusterId, contSize);
+  const minPrice    = getMinPrice(contSize);
+  const prefPrice   = getPrefPrice(contSize);
+
+  // Preferred Price NN Adjusted
+  const nnAdj = prefPrice + Math.max(0, distMiles - s.epsilon) * s.extraChargePerMile;
+
+  // Discount Preferred Pricing
+  const discPref = qty > 1 ? nnAdj * (1 - s.quantityDiscount) : nnAdj;
+
+  // Max of Price Match and Min Price
+  const maxMatchMin = Math.max(priceMatch, minPrice);
+
+  // New Rate
+  let newRate;
+  if (priceMatch > 0 && currentPrice > priceMatch) {
+    // Hold: customer already above competitor, don't raise into churn risk
+    newRate = currentPrice;
+  } else {
+    newRate = Math.max(currentPrice * (1 + s.priceIncreaseRate), maxMatchMin);
+  }
+
+  const delta  = newRate - currentPrice;
+  const piPct  = currentPrice > 0 ? delta / currentPrice : 0;
+
+  return {
+    'Container Size':                contSize,
+    'Current Price':                 currentPrice,
+    'Qty':                           qty,
+    'Price Match':                   priceMatch,
+    'Min Price':                     minPrice,
+    'Preferred Price NN Adjusted':   nnAdj,
+    'Discount Preferred Pricing':    discPref,
+    'Max of Match and Min Price':    maxMatchMin,
+    'New Rate':                      newRate,
+    'Delta':                         delta,
+    'PI%':                           piPct
+  };
+}
+
+function calcAllPricing() {
+  return state.features.map(f => ({ feature: f, pricing: calcRowPricing(f) }));
+}
+
+function recalculateAll() {
+  renderDashboard();
+  renderProcessedData();
+}
+
+// ═══════════════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════════════
+function renderDashboard() {
+  const el = document.getElementById('dash-content');
+  if (!state.features.length) {
+    el.innerHTML = '<div class="no-data"><strong>No data yet</strong>Upload an Excel file and run clustering on the Map tab first.</div>';
+    return;
+  }
+
+  const s = getSettings();
+  const rows = calcAllPricing();
+
+  const totalCurrent = rows.reduce((acc, r) => acc + (parseFloat(r.feature.properties['TotalAmount']) || 0), 0);
+  const totalNew     = rows.reduce((acc, r) => acc + r.pricing['New Rate'] * r.pricing['Qty'], 0);
+  const monthly      = totalNew - totalCurrent;
+  const yearly       = monthly * 12;
+  const netRate      = totalCurrent > 0 ? monthly / totalCurrent : 0;
+  const piValues     = rows.map(r => r.pricing['PI%']);
+  const avgRate      = piValues.length ? piValues.reduce((a,b) => a+b, 0) / piValues.length : 0;
+
+  const uniqueSvc    = new Set(rows.map(r => (r.feature.properties['Account#'] || '') + '|' + (r.feature.properties['Svc_Code'] || ''))).size;
+  const aboveEps     = rows.filter(r => (parseFloat(r.feature.properties['distance_to_nearest']) || 0) > s.epsilon).length;
+  const highPI       = rows.filter(r => r.pricing['PI%'] > 0.10).length;
+
+  const fmt  = v => '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtp = v => (v * 100).toFixed(2) + '%';
+
+  el.innerHTML = `
+    <div class="dash-grid">
+      <div class="dash-card">
+        <h3>Revenue Summary</h3>
+        <div class="metric-row"><span class="metric-label">Sum of All Current Rate Services</span><span class="metric-value">${fmt(totalCurrent)}</span></div>
+        <div class="metric-row"><span class="metric-label">Sum of All New Rate Services</span><span class="metric-value blue">${fmt(totalNew)}</span></div>
+        <div class="metric-row"><span class="metric-label">Monthly Increase</span><span class="metric-value green">${fmt(monthly)}</span></div>
+        <div class="metric-row"><span class="metric-label">Yearly Increase</span><span class="metric-value green">${fmt(yearly)}</span></div>
+        <div class="metric-row"><span class="metric-label">Net Rate Change</span><span class="metric-value">${fmtp(netRate)}</span></div>
+        <div class="metric-row"><span class="metric-label">Average Rate Change</span><span class="metric-value">${fmtp(avgRate)}</span></div>
+      </div>
+      <div class="dash-card">
+        <h3>Price Increase Drivers</h3>
+        <div class="metric-row"><span class="metric-label">Epsilon From Report (Miles)</span><span class="metric-value blue">${s.epsilon}</span></div>
+        <div class="metric-row"><span class="metric-label">Quantity Discount</span><span class="metric-value blue">${s.quantityDiscount}</span></div>
+        <div class="metric-row"><span class="metric-label">Extra Charge per Mile</span><span class="metric-value blue">$${s.extraChargePerMile}</span></div>
+        <div class="metric-row"><span class="metric-label">Price Increase Rate</span><span class="metric-value blue">${fmtp(s.priceIncreaseRate)}</span></div>
+        <div class="metric-row"><span class="metric-label">Preferred Price Buffer</span><span class="metric-value blue">${s.prefBuffer}</span></div>
+      </div>
+      <div class="dash-card">
+        <h3>Outlier Stats</h3>
+        <div class="metric-row"><span class="metric-label">Unique Service Lines</span><span class="metric-value">${uniqueSvc.toLocaleString()}</span></div>
+        <div class="metric-row"><span class="metric-label">Service Lines Above Epsilon</span><span class="metric-value orange">${aboveEps.toLocaleString()}</span></div>
+        <div class="metric-row"><span class="metric-label">Service Lines with PI% &gt; 10%</span><span class="metric-value orange">${highPI.toLocaleString()}</span></div>
+      </div>
+      <div class="dash-card">
+        <h3>Price Increase Checklist</h3>
+        <ul class="checklist">
+          <li><input type="checkbox"><span>Add data to the Data Drop tab</span></li>
+          <li><input type="checkbox"><span>Update Competitors pricing</span></li>
+          <li><input type="checkbox"><span>Update Competitors Cluster #</span></li>
+          <li><input type="checkbox"><span>Update Competitor Cluster #&apos;s on Data Drop</span></li>
+          <li><input type="checkbox"><span>Update Minimum Base Prices</span></li>
+          <li><input type="checkbox"><span>Update Preferred Prices</span></li>
+        </ul>
+      </div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// PROCESSED DATA TABLE
+// ═══════════════════════════════════════════════════════
+function renderProcessedData() {
+  const el = document.getElementById('proc-content');
+  if (!state.features.length) {
+    el.innerHTML = '<div class="no-data"><strong>No data yet</strong>Upload an Excel file and run clustering on the Map tab first.</div>';
+    return;
+  }
+
+  const rows = calcAllPricing();
+  // Collect all property keys from first feature
+  const propKeys = Object.keys(state.features[0].properties);
+  const calcKeys = ['Container Size','Current Price','Qty','Price Match','Min Price',
+    'Preferred Price NN Adjusted','Discount Preferred Pricing','Max of Match and Min Price',
+    'New Rate','Delta','PI%'];
+
+  const fmtNum = (v, dec=2) => {
+    const n = parseFloat(v);
+    return isNaN(n) ? (v || '') : n.toLocaleString('en-US', {minimumFractionDigits:dec, maximumFractionDigits:dec});
+  };
+
+  const pctClass = v => {
+    if (v <= 0) return 'pct-blue';
+    if (v <= 0.10) return 'pct-green';
+    if (v <= 0.25) return 'pct-orange';
+    return 'pct-red';
+  };
+
+  const headerCells = propKeys.map(k => `<th>${k}</th>`).join('') +
+    calcKeys.map(k => `<th class="calc-col">${k}</th>`).join('');
+
+  const bodyRows = rows.map(({ feature, pricing }) => {
+    const props = feature.properties;
+    const dataCells = propKeys.map(k => `<td>${props[k] != null ? props[k] : ''}</td>`).join('');
+    const calcCells = calcKeys.map(k => {
+      const v = pricing[k];
+      if (k === 'PI%') {
+        const pct = (v * 100).toFixed(1) + '%';
+        return `<td class="td-calc col-r"><span class="pct-pill ${pctClass(v)}">${pct}</span></td>`;
+      }
+      if (k === 'Container Size' || k === 'Qty') return `<td class="td-calc col-r">${v}</td>`;
+      const numericKeys = ['Current Price','Price Match','Min Price','Preferred Price NN Adjusted',
+        'Discount Preferred Pricing','Max of Match and Min Price','New Rate','Delta'];
+      if (numericKeys.includes(k)) return `<td class="td-calc col-r">$${fmtNum(v)}</td>`;
+      return `<td class="td-calc">${v != null ? v : ''}</td>`;
+    }).join('');
+    return `<tr>${dataCells}${calcCells}</tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="proc-table-wrap">
+      <table class="data-table">
+        <thead><tr>${headerCells}</tr></thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// COMP AREAS TAB
+// ═══════════════════════════════════════════════════════
+function addCompRow() {
+  state.compAreas.push({ compArea: '', cluster: '', contSize: '', price: '' });
+  renderCompAreas();
+}
+function deleteCompRow(i) {
+  state.compAreas.splice(i, 1);
+  renderCompAreas();
+  recalculateAll();
+}
+function updateComp(i, field, val) {
+  state.compAreas[i][field] = val;
+  if (field === 'price' || field === 'contSize') {
+    const row = document.getElementById('comp-tbody').rows[i];
+    if (row) {
+      const cs = parseFloat(state.compAreas[i].contSize) || 0;
+      const pr = parseFloat(val) || 0;
+      const ppy = cs > 0 && field === 'price' ? pr / cs : (parseFloat(state.compAreas[i].price) || 0) / (parseFloat(val) || 1);
+      if (row.cells[4]) row.cells[4].textContent = cs > 0 ? '$' + (parseFloat(state.compAreas[i].price) / cs || 0).toFixed(2) : '—';
+    }
+    recalculateAll();
+  }
+}
+function renderCompAreas() {
+  const tbody = document.getElementById('comp-tbody');
+  tbody.innerHTML = state.compAreas.map((c, i) => {
+    const ppy = (parseFloat(c.contSize) > 0 && parseFloat(c.price) > 0)
+      ? '$' + (parseFloat(c.price) / parseFloat(c.contSize)).toFixed(2) : '—';
+    return `<tr>
+      <td class="td-input"><input value="${c.compArea}" onchange="updateComp(${i},'compArea',this.value)" placeholder="Comp name"></td>
+      <td class="td-input"><input value="${c.cluster}" onchange="updateComp(${i},'cluster',this.value)" placeholder="e.g. 42"></td>
+      <td class="td-input"><input value="${c.contSize}" onchange="updateComp(${i},'contSize',this.value)" placeholder="e.g. 2"></td>
+      <td class="td-input col-r"><input value="${c.price}" onchange="updateComp(${i},'price',this.value)" placeholder="e.g. 148.65" style="text-align:right"></td>
+      <td class="td-calc col-r">${ppy}</td>
+      <td><button class="btn-danger-link" onclick="deleteCompRow(${i})">×</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+// MIN BASE PRICE TAB
+// ═══════════════════════════════════════════════════════
+function addMinRow() {
+  state.minPrices.push({ contSize: '', minBasePrice: '' });
+  renderMinPrices();
+}
+function deleteMinRow(i) {
+  state.minPrices.splice(i, 1);
+  renderMinPrices();
+  recalculateAll();
+}
+function updateMin(i, field, val) {
+  state.minPrices[i][field] = val;
+  const cs = parseFloat(state.minPrices[i].contSize) || 0;
+  const pr = parseFloat(state.minPrices[i].minBasePrice) || 0;
+  const tbody = document.getElementById('min-tbody');
+  if (tbody.rows[i]) {
+    tbody.rows[i].cells[2].textContent = cs > 0 && pr > 0 ? '$' + (pr / cs).toFixed(2) : '—';
+  }
+  recalculateAll();
+}
+function renderMinPrices() {
+  const tbody = document.getElementById('min-tbody');
+  tbody.innerHTML = state.minPrices.map((p, i) => {
+    const cs = parseFloat(p.contSize) || 0;
+    const pr = parseFloat(p.minBasePrice) || 0;
+    const ppy = cs > 0 && pr > 0 ? '$' + (pr / cs).toFixed(2) : '—';
+    return `<tr>
+      <td class="td-input"><input value="${p.contSize}" onchange="updateMin(${i},'contSize',this.value)" placeholder="e.g. 2"></td>
+      <td class="td-input col-r"><input value="${p.minBasePrice}" onchange="updateMin(${i},'minBasePrice',this.value)" placeholder="e.g. 129.65" style="text-align:right"></td>
+      <td class="td-calc col-r">${ppy}</td>
+      <td><button class="btn-danger-link" onclick="deleteMinRow(${i})">×</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+// PREFERRED PRICE TAB
+// ═══════════════════════════════════════════════════════
+function addPrefRow() {
+  state.prefPrices.push({ contSize: '', prefPrice: '' });
+  renderPrefPrices();
+}
+function deletePrefRow(i) {
+  state.prefPrices.splice(i, 1);
+  renderPrefPrices();
+  recalculateAll();
+}
+function updatePref(i, field, val) {
+  state.prefPrices[i][field] = val;
+  const cs = parseFloat(state.prefPrices[i].contSize) || 0;
+  const pr = parseFloat(state.prefPrices[i].prefPrice) || 0;
+  const tbody = document.getElementById('pref-tbody');
+  if (tbody.rows[i]) {
+    tbody.rows[i].cells[2].textContent = cs > 0 && pr > 0 ? '$' + (pr / cs).toFixed(2) : '—';
+  }
+  recalculateAll();
+}
+function renderPrefPrices() {
+  const tbody = document.getElementById('pref-tbody');
+  tbody.innerHTML = state.prefPrices.map((p, i) => {
+    const cs = parseFloat(p.contSize) || 0;
+    const pr = parseFloat(p.prefPrice) || 0;
+    const ppy = cs > 0 && pr > 0 ? '$' + (pr / cs).toFixed(2) : '—';
+    return `<tr>
+      <td class="td-input"><input value="${p.contSize}" onchange="updatePref(${i},'contSize',this.value)" placeholder="e.g. 2"></td>
+      <td class="td-input col-r"><input value="${p.prefPrice}" onchange="updatePref(${i},'prefPrice',this.value)" placeholder="e.g. 185.28" style="text-align:right"></td>
+      <td class="td-calc col-r">${ppy}</td>
+      <td><button class="btn-danger-link" onclick="deletePrefRow(${i})">×</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+// MAP & LEAFLET
+// ═══════════════════════════════════════════════════════
+function initMap() {
+  map = L.map('map').setView([39.5, -98.35], 4);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+  pointsLayer = L.layerGroup().addTo(map);
+}
+
+function generateColors(num) {
+  return Array.from({ length: num }, (_, i) =>
+    `hsl(${Math.round(360 * i / num)}, 70%, 50%)`
+  );
+}
+
+function plotClusters(fc) {
+  pointsLayer.clearLayers();
+  const clusters = {};
+  fc.features.forEach(f => {
+    const id = f.properties.cluster;
+    if (!clusters[id]) clusters[id] = [];
+    clusters[id].push(f);
+  });
+
+  const nonNoise = Object.keys(clusters).filter(k => k !== '-1' && k !== 'undefined');
+  const palette  = generateColors(nonNoise.length);
+  const colors   = {};
+  nonNoise.forEach((id, idx) => { colors[id] = palette[idx]; });
+  colors['-1'] = '#374151';
+  colors['undefined'] = '#374151';
+
+  Object.keys(clusters).forEach(cid => {
+    clusters[cid].forEach(feature => {
+      const [lon, lat] = feature.geometry.coordinates;
+      const props = feature.properties;
+      const pricing = calcRowPricing(feature);
+      const color = colors[String(cid)] || '#374151';
+      const isNoise = props.dbscan === 'noise' || cid === '-1' || cid === 'undefined';
+
+      const marker = L.circleMarker([lat, lon], {
+        radius: 4, color: isNoise ? '#374151' : color,
+        fillColor: isNoise ? '#374151' : color, fillOpacity: 0.9, weight: 1
+      });
+
+      const addr = `${props['Service Add Num'] || ''} ${props['Service Address'] || ''}, ${props['Service City'] || ''}, ${props['Service State'] || ''}`.trim().replace(/^,\s*|,\s*$/g, '');
+      const distLabel = props['drive_time_to_nearest_min'] != null
+        ? `${parseFloat(props['drive_time_to_nearest_min']).toFixed(1)} min drive`
+        : `${parseFloat(props['distance_to_nearest'] || 0).toFixed(2)} mi (straight-line)`;
+
+      marker.bindPopup(`
+        <div style="font-family:Inter,sans-serif;font-size:12px;min-width:200px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#1E293B">${props['Account#'] || 'N/A'}</div>
+          <div style="margin-bottom:4px;color:#475569">${addr || 'No address'}</div>
+          <hr style="margin:8px 0;border-color:#E2E8F0">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+            <div><span style="color:#94A3B8">Cluster:</span> <strong>${props.cluster ?? 'noise'}</strong></div>
+            <div><span style="color:#94A3B8">Cont Size:</span> <strong>${pricing['Container Size']} yd</strong></div>
+            <div><span style="color:#94A3B8">Nearest:</span> <strong>${props.nearest_point || '—'}</strong></div>
+            <div><span style="color:#94A3B8">Distance:</span> <strong>${distLabel}</strong></div>
+            <div><span style="color:#94A3B8">Current $:</span> <strong>$${pricing['Current Price'].toFixed(2)}</strong></div>
+            <div><span style="color:#94A3B8">New Rate:</span> <strong style="color:#2563EB">$${pricing['New Rate'].toFixed(2)}</strong></div>
+            <div><span style="color:#94A3B8">Delta:</span> <strong style="color:#16A34A">+$${pricing['Delta'].toFixed(2)}</strong></div>
+            <div><span style="color:#94A3B8">PI%:</span> <strong>${(pricing['PI%']*100).toFixed(1)}%</strong></div>
+          </div>
+        </div>`);
+      pointsLayer.addLayer(marker);
+    });
+  });
+
+  const coords = fc.features.map(f => f.geometry.coordinates);
+  if (coords.length) {
+    const lats = coords.map(c => c[1]), lngs = coords.map(c => c[0]);
+    map.fitBounds([[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]]);
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// GEOCODING
+// ═══════════════════════════════════════════════════════
+const validBBox = [-125.683594, 24.926295, -59.238281, 49.095452];
+function isWithinBBox(lat, lon) {
+  return lon >= validBBox[0] && lon <= validBBox[2] && lat >= validBBox[1] && lat <= validBBox[3];
+}
+
+async function geocodeAddress(address) {
+  async function censusGeocode(address) {
+    const url = `https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?benchmark=Public_AR_Current&format=json&address=${encodeURIComponent(address)}`;
+    try {
+      const r = await fetch(url, { headers: { Accept: 'application/json' } });
+      const d = await r.json();
+      if (d?.result?.addressMatches?.length) {
+        const m = d.result.addressMatches[0];
+        if (m.coordinates) return { lat: parseFloat(m.coordinates.y), lon: parseFloat(m.coordinates.x) };
+      }
+    } catch(e) {}
+    return null;
+  }
+  async function nominatimGeocode(address) {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`;
+    try {
+      const r = await fetch(url, { headers: { Accept: 'application/json' } });
+      const d = await r.json();
+      if (d?.length) return { lat: parseFloat(d[0].lat), lon: parseFloat(d[0].lon) };
+    } catch(e) {}
+    return null;
+  }
+  async function photonGeocode(address) {
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1`;
+    try {
+      const r = await fetch(url, { headers: { Accept: 'application/json' } });
+      const d = await r.json();
+      if (d?.features?.length) {
+        const [lon, lat] = d.features[0].geometry.coordinates;
+        return { lat: parseFloat(lat), lon: parseFloat(lon) };
+      }
+    } catch(e) {}
+    return null;
+  }
+  for (const svc of [censusGeocode, nominatimGeocode, photonGeocode]) {
+    const result = await svc(address);
+    if (result) return result;
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════
+// NEAREST NEIGHBOR — STRAIGHT LINE (Turf)
+// ═══════════════════════════════════════════════════════
+function computeNNTurf(features) {
+  features.forEach((feature, i) => {
+    let minDist = Infinity, nearestId = null;
+    features.forEach((other, j) => {
+      if (i === j) return;
+      const d = turf.distance(feature, other, { units: 'miles' });
+      if (d < minDist) { minDist = d; nearestId = other.properties['Account#']; }
+    });
+    feature.properties.nearest_point       = nearestId;
+    feature.properties.distance_to_nearest = minDist;
+    delete feature.properties.drive_time_to_nearest_min;
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// NEAREST NEIGHBOR — DRIVE TIME (ORS Matrix API)
+// ═══════════════════════════════════════════════════════
+async function computeNNORS(features, apiKey) {
+  const n = features.length;
+  const locations = features.map(f => f.geometry.coordinates); // [lon, lat]
+  const chunkSize = Math.max(1, Math.floor(3500 / n));
+  const numBatches = Math.ceil(n / chunkSize);
+
+  for (let batch = 0; batch < numBatches; batch++) {
+    const srcStart = batch * chunkSize;
+    const srcEnd   = Math.min(srcStart + chunkSize, n);
+    const sources  = Array.from({ length: srcEnd - srcStart }, (_, k) => srcStart + k);
+    const destinations = Array.from({ length: n }, (_, k) => k);
+
+    let data;
+    try {
+      const resp = await fetch('https://api.openrouteservice.org/v2/matrix/driving-car', {
+        method: 'POST',
+        headers: { 'Authorization': apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locations, sources, destinations, metrics: ['duration'] })
+      });
+      if (!resp.ok) throw new Error('ORS ' + resp.status);
+      data = await resp.json();
+    } catch (err) {
+      console.error('ORS error batch', batch, err);
+      // Fallback this batch to turf
+      sources.forEach(si => {
+        let minDist = Infinity, nearestId = null;
+        features.forEach((other, j) => {
+          if (j === si) return;
+          const d = turf.distance(features[si], other, { units: 'miles' });
+          if (d < minDist) { minDist = d; nearestId = other.properties['Account#']; }
+        });
+        features[si].properties.nearest_point       = nearestId;
+        features[si].properties.distance_to_nearest = minDist;
+        delete features[si].properties.drive_time_to_nearest_min;
+      });
+      continue;
+    }
+
+    data.durations.forEach((durations, rowIdx) => {
+      const si = sources[rowIdx];
+      let minSec = Infinity, nearestIdx = -1;
+      durations.forEach((sec, di) => {
+        if (di === si || sec == null) return;
+        if (sec < minSec) { minSec = sec; nearestIdx = di; }
+      });
+      features[si].properties.nearest_point            = nearestIdx >= 0 ? features[nearestIdx].properties['Account#'] : null;
+      features[si].properties.drive_time_to_nearest_min = minSec !== Infinity ? minSec / 60 : null;
+      // Also compute straight-line distance to the drive-time nearest (used for pricing formula)
+      if (nearestIdx >= 0) {
+        features[si].properties.distance_to_nearest = turf.distance(features[si], features[nearestIdx], { units: 'miles' });
+      }
+    });
+
+    updateProgress(srcEnd, n, `ORS matrix: ${srcEnd} / ${n} points`);
+    if (batch < numBatches - 1) await sleep(1600);
+  }
+}
+
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+// ═══════════════════════════════════════════════════════
+// PROGRESS BAR
+// ═══════════════════════════════════════════════════════
+function updateProgress(val, max, text) {
+  const bar = document.getElementById('progress-bar');
+  const status = document.getElementById('progress-status');
+  bar.max = max; bar.value = val;
+  status.textContent = text;
+}
+
+// ═══════════════════════════════════════════════════════
+// PROCESS FILE (Main)
+// ═══════════════════════════════════════════════════════
+async function processFile() {
+  const fileInput = document.getElementById('excelFile');
+  const geocodeOption = document.querySelector('input[name="geocodeOption"]:checked').value;
+  const epsilon = parseFloat(document.getElementById('clusterRadius').value);
+  const minPts  = parseInt(document.getElementById('minPoints').value);
+  const orsKey  = document.getElementById('s-ors-key').value.trim();
+
+  if (!fileInput.files.length) { alert('Please select an Excel file.'); return; }
+  if (isNaN(epsilon)) { alert('Please enter a valid Epsilon (miles).'); return; }
+  if (isNaN(minPts))  { alert('Please enter a valid Minimum Points value.'); return; }
+
+  state.inputFileName = fileInput.files[0].name;
+  const progressWrap = document.getElementById('progress-wrap');
+  const exportBtn = document.getElementById('exportBtn');
+  const exportBtn2 = document.getElementById('exportBtn2');
+  exportBtn.disabled = true;
+  exportBtn2.disabled = true;
+
+  if (geocodeOption === 'address') {
+    progressWrap.style.display = 'block';
+  }
+
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    const data = new Uint8Array(e.target.result);
+    const workbook = XLSX.read(data, { type: 'array' });
+    const ws = workbook.Sheets[workbook.SheetNames[0]];
+    const jsonData = XLSX.utils.sheet_to_json(ws);
+
+    // Validate columns
+    if (geocodeOption === 'latlong') {
+      if (!jsonData.length || !jsonData[0].hasOwnProperty('Latitude') || !jsonData[0].hasOwnProperty('Longitude')) {
+        alert("Excel must contain 'Latitude' and 'Longitude' columns in Lat/Lng mode.");
+        return;
+      }
+    } else {
+      const needed = ['Service Add Num','Service Address','Service City','Service State'];
+      if (!jsonData.length || !needed.every(c => jsonData[0].hasOwnProperty(c))) {
+        alert("Excel must contain 'Service Add Num', 'Service Address', 'Service City', and 'Service State' columns in Geocode mode.");
+        return;
+      }
+      progressWrap.style.display = 'block';
+      document.getElementById('progress-bar').max = jsonData.length;
+      document.getElementById('progress-bar').value = 0;
+      document.getElementById('progress-status').textContent = '0 of ' + jsonData.length + ' points processed.';
+    }
+
+    // Geocode or parse coords
+    let successCount = 0, failCount = 0;
+    for (let i = 0; i < jsonData.length; i++) {
+      const row = jsonData[i];
+      if (geocodeOption === 'address') {
+        const addr = `${row['Service Add Num']} ${row['Service Address']}, ${row['Service City']}, ${row['Service State']}`;
+        const coords = await geocodeAddress(addr);
+        if (coords && isWithinBBox(coords.lat, coords.lon)) {
+          row.Latitude = coords.lat; row.Longitude = coords.lon; successCount++;
+        } else {
+          row.Latitude = null; row.Longitude = null; failCount++;
+        }
+        updateProgress(i + 1, jsonData.length, `${i+1} of ${jsonData.length} geocoded — ${failCount} failed`);
+      } else {
+        row.Latitude  = parseFloat(row.Latitude);
+        row.Longitude = parseFloat(row.Longitude);
+      }
+    }
+    if (geocodeOption === 'address') {
+      document.getElementById('progress-status').textContent =
+        `Geocoding complete: ${successCount} success, ${failCount} failed`;
+    }
+
+    // Filter valid coords
+    const validRows = jsonData.filter(r => r.Latitude != null && !isNaN(r.Latitude) && r.Longitude != null && !isNaN(r.Longitude));
+
+    if (!validRows.length) {
+      alert('No valid coordinates found. Check your file and try again.');
+      progressWrap.style.display = 'none';
+      return;
+    }
+
+    // Build GeoJSON
+    const features = validRows.map(row => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [parseFloat(row.Longitude), parseFloat(row.Latitude)] },
+      properties: { ...row }
+    }));
+    let fc = { type: 'FeatureCollection', features };
+
+    // DBSCAN clustering
+    fc = turf.clustersDbscan(fc, epsilon, { units: 'miles', minPoints: minPts });
+
+    // Nearest neighbor
+    if (orsKey) {
+      progressWrap.style.display = 'block';
+      document.getElementById('progress-status').textContent = 'Computing drive-time nearest neighbor via ORS...';
+      await computeNNORS(fc.features, orsKey);
+      document.getElementById('progress-status').textContent = 'Drive-time computation complete.';
+    } else {
+      document.getElementById('progress-status').textContent = 'Computing straight-line nearest neighbor...';
+      computeNNTurf(fc.features);
+      document.getElementById('progress-status').textContent = 'Nearest neighbor complete (straight-line distance).';
+    }
+
+    // Store and render
+    state.features = fc.features;
+    plotClusters(fc);
+    renderDashboard();
+    renderProcessedData();
+
+    exportBtn.disabled = false;
+    exportBtn2.disabled = false;
+  };
+  reader.readAsArrayBuffer(fileInput.files[0]);
+}
+
+// ═══════════════════════════════════════════════════════
+// EXPORT EXCEL
+// ═══════════════════════════════════════════════════════
+function exportExcel() {
+  if (!state.features.length) {
+    alert('No processed data available. Please run clustering first.');
+    return;
+  }
+  const rows = calcAllPricing();
+  const exportData = rows.map(({ feature, pricing }) => {
+    const { ID: _id, 'Stopdate/ Auto': _sa, 'Stopdate/ Cust': _sc, ...rest } = feature.properties;
+    return { ...rest, ...pricing };
+  });
+  const ws = XLSX.utils.json_to_sheet(exportData);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'ProcessedData');
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([wbout], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = state.inputFileName.replace(/\.[^/.]+$/, '') + '_processed.xlsx';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ═══════════════════════════════════════════════════════
+// EXPORT PDF
+// ═══════════════════════════════════════════════════════
+async function exportPDF() {
+  const { jsPDF } = window.jspdf;
+  const s = getSettings();
+  const fmt = v => '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtp = v => (v * 100).toFixed(2) + '%';
+
+  // Build dashboard stats if data available
+  let dashHTML = '<p style="color:#94A3B8">No clustering data — run clustering first to include revenue summary.</p>';
+  if (state.features.length) {
+    const rows = calcAllPricing();
+    const totalCurrent = rows.reduce((a, r) => a + (parseFloat(r.feature.properties['TotalAmount']) || 0), 0);
+    const totalNew = rows.reduce((a, r) => a + r.pricing['New Rate'] * r.pricing['Qty'], 0);
+    const monthly = totalNew - totalCurrent;
+    const yearly = monthly * 12;
+    const netRate = totalCurrent > 0 ? monthly / totalCurrent : 0;
+    const avgRate = rows.reduce((a, r) => a + r.pricing['PI%'], 0) / rows.length;
+    const uniqueSvc = new Set(rows.map(r => (r.feature.properties['Account#'] || '') + '|' + (r.feature.properties['Svc_Code'] || ''))).size;
+    const aboveEps = rows.filter(r => (parseFloat(r.feature.properties['distance_to_nearest']) || 0) > s.epsilon).length;
+    const highPI = rows.filter(r => r.pricing['PI%'] > 0.10).length;
+    dashHTML = `
+      <div class="pdf-grid">
+        <div>
+          <div class="pdf-metric"><span class="pdf-metric-label">Sum of All Current Rate Services</span><span class="pdf-metric-value">${fmt(totalCurrent)}</span></div>
+          <div class="pdf-metric"><span class="pdf-metric-label">Sum of All New Rate Services</span><span class="pdf-metric-value">${fmt(totalNew)}</span></div>
+          <div class="pdf-metric"><span class="pdf-metric-label">Monthly Increase</span><span class="pdf-metric-value">${fmt(monthly)}</span></div>
+          <div class="pdf-metric"><span class="pdf-metric-label">Yearly Increase</span><span class="pdf-metric-value">${fmt(yearly)}</span></div>
+          <div class="pdf-metric"><span class="pdf-metric-label">Net Rate Change</span><span class="pdf-metric-value">${fmtp(netRate)}</span></div>
+          <div class="pdf-metric"><span class="pdf-metric-label">Average Rate Change</span><span class="pdf-metric-value">${fmtp(avgRate)}</span></div>
+        </div>
+        <div>
+          <div class="pdf-metric"><span class="pdf-metric-label">Epsilon (miles)</span><span class="pdf-metric-value">${s.epsilon}</span></div>
+          <div class="pdf-metric"><span class="pdf-metric-label">Quantity Discount</span><span class="pdf-metric-value">${s.quantityDiscount}</span></div>
+          <div class="pdf-metric"><span class="pdf-metric-label">Extra $/Mile</span><span class="pdf-metric-value">$${s.extraChargePerMile}</span></div>
+          <div class="pdf-metric"><span class="pdf-metric-label">Price Increase Rate</span><span class="pdf-metric-value">${fmtp(s.priceIncreaseRate)}</span></div>
+          <div class="pdf-metric"><span class="pdf-metric-label">Unique Service Lines</span><span class="pdf-metric-value">${uniqueSvc.toLocaleString()}</span></div>
+          <div class="pdf-metric"><span class="pdf-metric-label">Lines Above Epsilon</span><span class="pdf-metric-value">${aboveEps.toLocaleString()}</span></div>
+          <div class="pdf-metric"><span class="pdf-metric-label">Lines with PI% &gt; 10%</span><span class="pdf-metric-value">${highPI.toLocaleString()}</span></div>
+        </div>
+      </div>`;
+  }
+
+  const checklist = ['Add data to the Data Drop tab','Update Competitors pricing','Update Competitors Cluster #','Update Competitor Cluster #\'s on Data Drop','Update Minimum Base Prices','Update Preferred Prices'];
+
+  const compRows = state.compAreas.map(c => `<tr>
+    <td>${c.compArea}</td><td>${c.cluster}</td><td>${c.contSize} yd</td>
+    <td>$${parseFloat(c.price || 0).toFixed(2)}</td>
+    <td>${parseFloat(c.contSize) > 0 ? '$' + (parseFloat(c.price || 0) / parseFloat(c.contSize)).toFixed(2) : '—'}</td>
+  </tr>`).join('');
+
+  const minRows = state.minPrices.map(p => `<tr>
+    <td>${p.contSize} yd</td>
+    <td>$${parseFloat(p.minBasePrice || 0).toFixed(2)}</td>
+    <td>${parseFloat(p.contSize) > 0 ? '$' + (parseFloat(p.minBasePrice || 0) / parseFloat(p.contSize)).toFixed(2) : '—'}</td>
+  </tr>`).join('');
+
+  const prefRows = state.prefPrices.map(p => `<tr>
+    <td>${p.contSize} yd</td>
+    <td>$${parseFloat(p.prefPrice || 0).toFixed(2)}</td>
+    <td>${parseFloat(p.contSize) > 0 ? '$' + (parseFloat(p.prefPrice || 0) / parseFloat(p.contSize)).toFixed(2) : '—'}</td>
+  </tr>`).join('');
+
+  const pdfEl = document.getElementById('pdf-area');
+  const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  pdfEl.innerHTML = `
+    <div class="pdf-title">QuoteIQ — Location Pricing Optimizer</div>
+    <div class="pdf-subtitle">Price Increase Report &nbsp;·&nbsp; Generated ${dateStr}</div>
+
+    <div class="pdf-section">
+      <h2>Revenue Summary &amp; Price Increase Drivers</h2>
+      ${dashHTML}
+    </div>
+
+    <div class="pdf-section">
+      <h2>Price Increase Checklist</h2>
+      <ul class="pdf-checklist">
+        ${checklist.map(item => `<li><div class="pdf-check-box"></div>${item}</li>`).join('')}
+      </ul>
+    </div>
+
+    <div class="pdf-section">
+      <h2>Competitor Areas (Comp Areas)</h2>
+      ${state.compAreas.length
+        ? `<table class="pdf-table"><thead><tr><th>Comp Area</th><th>Cluster #</th><th>Cont Size</th><th>Price</th><th>Price/Yard</th></tr></thead><tbody>${compRows}</tbody></table>`
+        : '<p style="color:#94A3B8;font-size:12px">No competitor data entered yet.</p>'}
+    </div>
+
+    <div class="pdf-section">
+      <h2>Min Base Price</h2>
+      <table class="pdf-table"><thead><tr><th>Cont Size</th><th>Min Base Price</th><th>Price/Yard</th></tr></thead><tbody>${minRows}</tbody></table>
+    </div>
+
+    <div class="pdf-section">
+      <h2>Preferred Price</h2>
+      <table class="pdf-table"><thead><tr><th>Cont Size</th><th>Preferred Price</th><th>Price/Yard</th></tr></thead><tbody>${prefRows}</tbody></table>
+    </div>`;
+
+  try {
+    const canvas = await html2canvas(pdfEl, { scale: 1.5, useCORS: true, logging: false });
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF('p', 'pt', 'letter');
+    const pdfW = pdf.internal.pageSize.getWidth();
+    const pdfH = pdf.internal.pageSize.getHeight();
+    const imgW = canvas.width;
+    const imgH = canvas.height;
+    const ratio = pdfW / imgW;
+    let y = 0;
+
+    while (y < imgH) {
+      const sliceH = Math.min(pdfH / ratio, imgH - y);
+      const sliceCanvas = document.createElement('canvas');
+      sliceCanvas.width = imgW;
+      sliceCanvas.height = sliceH;
+      sliceCanvas.getContext('2d').drawImage(canvas, 0, y, imgW, sliceH, 0, 0, imgW, sliceH);
+      if (y > 0) pdf.addPage();
+      pdf.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', 0, 0, pdfW, sliceH * ratio);
+      y += sliceH;
+    }
+    pdf.save('QuoteIQ_Pricing_Report_' + new Date().toISOString().slice(0,10) + '.pdf');
+  } catch (err) {
+    alert('PDF export failed: ' + err.message);
+    console.error(err);
+  }
+  pdfEl.innerHTML = '';
+}
+
+// ═══════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════
+window.onload = function() {
+  initMap();
+
+  // Tab clicks
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  // Render pricing tables with default data
+  renderCompAreas();
+  renderMinPrices();
+  renderPrefPrices();
+};
+</script>
+</body>
+</html>
