@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function uid() { return request.auth.uid; }
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(uid()));
+    }
+    function isSuperuser() {
+      return request.auth != null && userDoc().data.role == 'superuser';
+    }
+    function isActiveUser() {
+      return request.auth != null && userDoc().data.status == 'active';
+    }
+    function myCompany() {
+      return userDoc().data.companyId;
+    }
+
+    // ── COMPANIES ──────────────────────────────────────────────────
+    match /companies/{companyId} {
+      allow read: if isSuperuser() || (isActiveUser() && myCompany() == companyId);
+      allow write: if isSuperuser();
+
+      match /{subcollection}/{docId} {
+        allow read, write: if isSuperuser() || (isActiveUser() && myCompany() == companyId);
+      }
+    }
+
+    // ── USERS ──────────────────────────────────────────────────────
+    match /users/{userId} {
+      allow read: if isSuperuser() || (request.auth != null && uid() == userId);
+      allow create: if request.auth != null && uid() == userId;   // self-create via invite
+      allow update: if isSuperuser() || (request.auth != null && uid() == userId);
+    }
+
+    // ── INVITES ────────────────────────────────────────────────────
+    match /invites/{token} {
+      allow read: if true;                   // join.html needs to read without auth
+      allow create: if isSuperuser();
+      allow update: if true;                 // mark used on join
+    }
+  }
+}

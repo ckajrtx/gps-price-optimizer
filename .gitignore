@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+
+# Firebase
+.firebase/
+*-firebase-adminsdk-*.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Shortcuts
+*.url

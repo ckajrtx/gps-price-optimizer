@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>QuoteIQ — Pricing Optimizer</title>
+  <link rel="stylesheet" href="/css/shared.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" crossorigin="">
+  <style>
+    /* ── APP SHELL ── */
+    #app { display:flex; flex-direction:column; height:100vh; overflow:hidden; }
+
+    /* ── TOP BAR ── */
+    #top-bar {
+      display:flex; align-items:center; background:#fff;
+      border-bottom:1px solid #E2E8F0; height:50px; padding:0 16px;
+      flex-shrink:0; box-shadow:var(--shadow-sm); z-index:2000; gap:12px;
+    }
+    .app-brand { font-weight:700; font-size:15px; letter-spacing:-.3px; white-space:nowrap; }
+    .app-brand span { color:var(--blue); }
+    .company-chip { background:var(--blue-light); color:var(--blue-dark); border-radius:4px; padding:3px 8px; font-size:12px; font-weight:600; white-space:nowrap; max-width:160px; overflow:hidden; text-overflow:ellipsis; }
+    .tabs { display:flex; gap:2px; flex:1; overflow-x:auto; }
+    .tab-btn { background:none; border:none; padding:0 13px; height:50px; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500; color:#64748B; border-bottom:2px solid transparent; margin-bottom:-1px; transition:color .15s,border-color .15s; white-space:nowrap; flex-shrink:0; }
+    .tab-btn:hover { color:var(--blue); }
+    .tab-btn.active { color:var(--blue); border-bottom-color:var(--blue); }
+    .top-bar-right { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+    #btn-help { background:none; border:1px solid #CBD5E1; border-radius:50%; width:28px; height:28px; cursor:pointer; font-size:13px; color:#64748B; display:flex; align-items:center; justify-content:center; font-weight:700; }
+    #btn-help:hover { background:var(--blue-light); color:var(--blue); border-color:var(--blue); }
+    .user-menu { display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 8px; border-radius:6px; }
+    .user-menu:hover { background:var(--slate-100); }
+    .user-info { text-align:right; }
+    .user-info .uname { font-size:12px; font-weight:600; color:#1E293B; }
+    .user-info .urole { font-size:10px; color:#64748B; }
+
+    /* ── SETTINGS BAR ── */
+    #settings-bar { background:#F1F5F9; border-bottom:1px solid #E2E8F0; padding:6px 16px; display:flex; align-items:center; gap:14px; flex-shrink:0; flex-wrap:wrap; }
+    #settings-bar .bar-label { font-size:11px; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:.6px; white-space:nowrap; }
+    .sf { display:flex; align-items:center; gap:5px; }
+    .sf label { font-size:12px; color:#475569; white-space:nowrap; }
+    .sf input { width:72px; padding:4px 8px; border:1px solid #BFDBFE; border-radius:4px; font-size:12px; font-family:inherit; background:#EFF6FF; color:#1E293B; }
+    .sf input:focus { outline:2px solid var(--blue); outline-offset:-1px; }
+    .sf.wide input { width:190px; }
+    /* tooltip icon */
+    .ti { width:13px; height:13px; border-radius:50%; background:#CBD5E1; color:#475569; font-size:8px; font-weight:700; display:inline-flex; align-items:center; justify-content:center; cursor:default; flex-shrink:0; }
+    .tooltip-wrap { position:relative; display:inline-flex; align-items:center; gap:4px; }
+    .tooltip-wrap .tip { display:none; position:absolute; bottom:calc(100% + 8px); left:0; background:#1E293B; color:#fff; padding:8px 10px; border-radius:5px; font-size:11px; line-height:1.45; width:210px; z-index:500; white-space:normal; pointer-events:none; }
+    .tooltip-wrap .tip::after { content:''; position:absolute; top:100%; left:12px; border:5px solid transparent; border-top-color:#1E293B; }
+    .tooltip-wrap:hover .tip { display:block; }
+
+    /* ── TAB CONTENT ── */
+    #tab-content { flex:1; overflow:hidden; position:relative; }
+    .tab-panel { display:none; height:100%; }
+    .tab-panel.active { display:flex; flex-direction:column; }
+
+    /* ── MAP TAB ── */
+    #tab-map.active { flex-direction:row !important; }
+    #map-sidebar { width:300px; flex-shrink:0; background:#fff; border-right:1px solid #E2E8F0; overflow-y:auto; display:flex; flex-direction:column; }
+    .sb-hdr { padding:14px 16px 10px; border-bottom:1px solid #E2E8F0; }
+    .sb-hdr h3 { margin:0; font-size:14px; font-weight:600; }
+    .sb-hdr p  { margin:4px 0 0; font-size:11px; color:#94A3B8; }
+    .sb-sec { padding:12px 16px; border-bottom:1px solid #F1F5F9; }
+    .sb-sec label { display:block; font-size:12px; font-weight:500; color:#475569; margin-bottom:5px; }
+    .sb-sec input[type="text"] { width:100%; padding:7px 10px; border:1px solid #CBD5E1; border-radius:5px; font-size:13px; font-family:inherit; }
+    .sb-sec input[type="text"]:focus { outline:2px solid var(--blue); outline-offset:-1px; }
+    /* drag-drop zone */
+    #drop-zone { border:2px dashed #CBD5E1; border-radius:8px; padding:16px; text-align:center; cursor:pointer; transition:border-color .15s,background .15s; position:relative; }
+    #drop-zone:hover, #drop-zone.drag-over { border-color:var(--blue); background:var(--blue-light); }
+    #drop-zone.has-file { border-style:solid; border-color:var(--green); background:#F0FDF4; }
+    #drop-zone .dz-icon { font-size:22px; margin-bottom:4px; }
+    #drop-zone .dz-text { font-size:12px; color:#64748B; }
+    #drop-zone .dz-text strong { color:var(--blue); }
+    #drop-zone .dz-filename { font-size:12px; color:var(--green); font-weight:600; margin-top:4px; }
+    #excelFile { display:none; }
+    .radio-grp { display:flex; flex-direction:column; gap:6px; }
+    .radio-grp label { display:flex; align-items:center; gap:8px; font-size:13px; color:#1E293B; cursor:pointer; font-weight:400; margin:0; }
+    .radio-grp input[type=radio] { accent-color:var(--blue); width:14px; height:14px; }
+    .sb-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .sb-actions { padding:12px 16px; display:flex; flex-direction:column; gap:8px; }
+    .sb-row2 { display:flex; gap:8px; }
+    #progress-wrap { padding:0 16px 12px; display:none; }
+    #progress-bar { width:100%; height:6px; border-radius:3px; accent-color:var(--blue); }
+    #progress-status { font-size:11px; color:#64748B; margin-top:4px; }
+    #map { flex:1; }
+
+    /* ── CONTENT PANELS ── */
+    .content-panel { flex:1; overflow-y:auto; padding:20px 24px; background:var(--slate-50); }
+    .ph { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; flex-wrap:wrap; gap:10px; }
+    .ph h2 { margin:0; font-size:18px; font-weight:700; }
+    .ph-actions { display:flex; gap:8px; flex-wrap:wrap; }
+
+    /* ── DASHBOARD ── */
+    .dash-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px; margin-bottom:18px; }
+    .dash-card { background:#fff; border:1px solid #E2E8F0; border-radius:8px; padding:18px 20px; }
+    .dash-card h3 { margin:0 0 12px; font-size:11px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:.7px; }
+    .metric-row { display:flex; justify-content:space-between; align-items:baseline; padding:5px 0; border-bottom:1px solid #F1F5F9; }
+    .metric-row:last-child { border-bottom:none; }
+    .metric-label { font-size:13px; color:#475569; }
+    .metric-value { font-size:13px; font-weight:600; }
+    .mv-blue   { color:var(--blue); }
+    .mv-green  { color:var(--green); }
+    .mv-orange { color:var(--orange); }
+    .checklist { list-style:none; padding:0; margin:0; }
+    .checklist li { display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid #F1F5F9; font-size:13px; color:#475569; }
+    .checklist li:last-child { border-bottom:none; }
+    .checklist input[type=checkbox] { accent-color:var(--blue); width:15px; height:15px; flex-shrink:0; cursor:pointer; }
+
+    /* ── PROCESSED DATA ── */
+    #tab-processed .content-panel { padding:14px 20px; }
+    .proc-wrap { overflow:auto; max-height:calc(100vh - 175px); border:1px solid #E2E8F0; border-radius:8px; background:#fff; }
+    .proc-wrap .data-table th.calc-col { background:#EEF2FF !important; color:#3730A3 !important; }
+    .pct-pill { display:inline-block; padding:2px 7px; border-radius:12px; font-size:11px; font-weight:600; }
+    .pp-green  { background:#DCFCE7; color:#15803D; }
+    .pp-blue   { background:#DBEAFE; color:#1D4ED8; }
+    .pp-orange { background:#FEF3C7; color:#B45309; }
+    .pp-red    { background:#FEE2E2; color:#B91C1C; }
+
+    /* ── TWO-COL LAYOUT ── */
+    .two-col { display:grid; grid-template-columns:1fr 280px; gap:20px; align-items:start; }
+    .side-card { background:#fff; border:1px solid #E2E8F0; border-radius:8px; padding:18px; }
+    .side-card h4 { margin:0 0 12px; font-size:12px; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:.5px; }
+    .side-note { font-size:12px; color:#94A3B8; line-height:1.5; margin-top:8px; }
+    .side-field { margin-bottom:12px; }
+    .side-field label { display:block; font-size:12px; color:#475569; margin-bottom:4px; font-weight:500; }
+    .side-field input { width:100%; padding:7px 10px; border:1px solid #BFDBFE; border-radius:5px; font-size:13px; font-family:inherit; background:#EFF6FF; color:#1E293B; }
+
+    /* ── SERVICE CODES TAB ── */
+    .svc-badge { display:inline-block; background:#F1F5F9; padding:2px 7px; border-radius:4px; font-size:11px; font-family:monospace; color:#475569; }
+
+    /* ── PDF PRINT AREA ── */
+    #pdf-area { position:fixed; left:-9999px; top:0; width:900px; background:#fff; padding:40px; font-family:'Inter',sans-serif; font-size:13px; color:#1E293B; }
+    .pdf-title { font-size:22px; font-weight:700; margin-bottom:4px; }
+    .pdf-sub { font-size:13px; color:#64748B; margin-bottom:30px; }
+    .pdf-section { margin-bottom:28px; }
+    .pdf-section h2 { font-size:14px; font-weight:700; color:var(--blue); border-bottom:2px solid #DBEAFE; padding-bottom:6px; margin:0 0 14px; }
+    .pdf-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+    .pdf-metric { display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px solid #F1F5F9; font-size:12px; }
+    .pdf-metric-label { color:#475569; }
+    .pdf-metric-value { font-weight:600; }
+    .pdf-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .pdf-table th { background:#F8FAFC; padding:8px 10px; text-align:left; font-weight:600; color:#475569; border:1px solid #E2E8F0; font-size:11px; }
+    .pdf-table td { padding:6px 10px; border:1px solid #E2E8F0; }
+    .pdf-table tr:nth-child(even) td { background:#F8FAFC; }
+    .pdf-cl { list-style:none; padding:0; margin:0; }
+    .pdf-cl li { display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid #F1F5F9; font-size:12px; color:#475569; }
+    .pdf-box { width:12px; height:12px; border:1.5px solid #CBD5E1; border-radius:2px; flex-shrink:0; }
+
+    /* ── HELP MODAL ── */
+    #help-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:9000; align-items:center; justify-content:center; }
+    #help-overlay.open { display:flex; }
+    #help-modal { background:#fff; border-radius:10px; width:640px; max-width:96vw; max-height:88vh; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 25px 60px rgba(0,0,0,.22); }
+    .hm-hdr { padding:16px 20px; border-bottom:1px solid #E2E8F0; display:flex; align-items:center; justify-content:space-between; }
+    .hm-hdr h2 { margin:0; font-size:16px; font-weight:700; }
+    .hm-body { overflow-y:auto; padding:20px; }
+    .help-sec { margin-bottom:22px; }
+    .help-sec h3 { font-size:12px; font-weight:700; color:var(--blue); text-transform:uppercase; letter-spacing:.6px; margin:0 0 10px; }
+    .help-table { width:100%; border-collapse:collapse; font-size:12px; margin-bottom:6px; }
+    .help-table th { background:#F8FAFC; padding:7px 10px; text-align:left; font-weight:600; color:#475569; border:1px solid #E2E8F0; }
+    .help-table td { padding:6px 10px; border:1px solid #E2E8F0; vertical-align:top; }
+    .help-table tr:nth-child(even) td { background:#F8FAFC; }
+    .hp { display:flex; gap:10px; padding:6px 0; border-bottom:1px solid #F1F5F9; font-size:12px; }
+    .hp:last-child { border-bottom:none; }
+    .hp-name { font-weight:600; color:#1E293B; min-width:160px; }
+    .hp-desc { color:#475569; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- TOP BAR -->
+  <div id="top-bar">
+    <div class="app-brand">Quote<span>IQ</span></div>
+    <div id="company-chip" class="company-chip" style="display:none"></div>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="map">Map</button>
+      <button class="tab-btn" data-tab="dashboard">Dashboard</button>
+      <button class="tab-btn" data-tab="processed">Processed Data</button>
+      <button class="tab-btn" data-tab="comp">Comp Areas</button>
+      <button class="tab-btn" data-tab="minprice">Min Base Price</button>
+      <button class="tab-btn" data-tab="preferred">Preferred Price</button>
+      <button class="tab-btn" data-tab="svcodes">Service Codes</button>
+    </div>
+    <div class="top-bar-right">
+      <button id="btn-help" onclick="openHelp()" title="Help">?</button>
+      <div class="user-menu" id="user-menu-btn">
+        <div class="avatar" id="user-avatar">?</div>
+        <div class="user-info">
+          <div class="uname" id="user-name">…</div>
+          <div class="urole" id="user-role"></div>
+        </div>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="signOutUser()">Sign Out</button>
+    </div>
+  </div>
+
+  <!-- SETTINGS BAR -->
+  <div id="settings-bar">
+    <span class="bar-label">Pricing Drivers</span>
+    <div class="sf">
+      <div class="tooltip-wrap">
+        <label>Qty Discount</label><span class="ti">i</span>
+        <div class="tip">Discount rate applied to Preferred Price when a customer has more than one container on the same service line.</div>
+      </div>
+      <input type="text" id="s-qty-disc" value="30%" onchange="onSettingsChange()">
+    </div>
+    <div class="sf">
+      <div class="tooltip-wrap">
+        <label>Extra $/Mile</label><span class="ti">i</span>
+        <div class="tip">Additional charge per mile for outlying customers not part of any cluster (distance beyond Epsilon).</div>
+      </div>
+      <input type="text" id="s-extra-mile" value="15" onchange="onSettingsChange()">
+    </div>
+    <div class="sf">
+      <div class="tooltip-wrap">
+        <label>PI Rate</label><span class="ti">i</span>
+        <div class="tip">Price increase percentage used to calculate new service rates. Example: 10% means current price × 1.10.</div>
+      </div>
+      <input type="text" id="s-pi-rate" value="10%" onchange="onSettingsChange()">
+    </div>
+    <div class="sf">
+      <div class="tooltip-wrap">
+        <label>Pref Buffer</label><span class="ti">i</span>
+        <div class="tip">Sets the price ceiling for a service code: Preferred Price × (1 + Pref Buffer%) = maximum allowed new rate.</div>
+      </div>
+      <input type="text" id="s-pref-buf" value="40%" onchange="onSettingsChange()">
+    </div>
+    <div class="sf wide">
+      <div class="tooltip-wrap">
+        <label>ORS API Key</label><span class="ti">i</span>
+        <div class="tip">Free key from openrouteservice.org. Enables drive-time nearest neighbor. Leave blank for straight-line distance.</div>
+      </div>
+      <input type="text" id="s-ors-key" placeholder="Leave blank for straight-line" onchange="onSettingsChange()">
+    </div>
+    <button class="btn btn-outline btn-sm" id="save-settings-btn" onclick="persistSettings()" style="margin-left:auto">Save Settings</button>
+  </div>
+
+  <!-- TAB CONTENT -->
+  <div id="tab-content">
+
+    <!-- MAP TAB -->
+    <div id="tab-map" class="tab-panel active">
+      <div id="map-sidebar">
+        <div class="sb-hdr">
+          <h3>Clustering Options</h3>
+          <p>Upload your Excel file and run DBSCAN clustering</p>
+        </div>
+        <div class="sb-sec">
+          <label>Excel File</label>
+          <div id="drop-zone" onclick="document.getElementById('excelFile').click()"
+               ondragover="dzOver(event)" ondragleave="dzLeave()" ondrop="dzDrop(event)">
+            <input type="file" id="excelFile" accept=".xlsx,.xls" onchange="dzSelect(this.files[0])">
+            <div class="dz-icon">📂</div>
+            <div class="dz-text"><strong>Drag &amp; drop</strong> your Excel file here<br>or click to browse</div>
+            <div class="dz-filename" id="dz-filename" style="display:none"></div>
+          </div>
+        </div>
+        <div class="sb-sec">
+          <label style="margin-bottom:8px">Location Mode</label>
+          <div class="radio-grp">
+            <label><input type="radio" name="geocodeOption" value="latlong" checked><span>Use Latitude / Longitude columns</span></label>
+            <label><input type="radio" name="geocodeOption" value="address"><span>Geocode Address columns</span></label>
+          </div>
+        </div>
+        <div class="sb-sec">
+          <div class="sb-row">
+            <div>
+              <label>Epsilon (miles)</label>
+              <input type="text" id="clusterRadius" value="3" onchange="onSettingsChange()">
+            </div>
+            <div>
+              <label>Min Points</label>
+              <input type="text" id="minPoints" value="5">
+            </div>
+          </div>
+        </div>
+        <div class="sb-actions">
+          <button class="btn btn-primary btn-full" onclick="processFile()">Calculate Clusters</button>
+          <div class="sb-row2">
+            <button class="btn btn-secondary" style="flex:1" id="exportBtn" onclick="exportExcel()" disabled>Export Excel</button>
+            <button class="btn btn-outline btn-sm" id="refresh-nn-btn" onclick="refreshNN()" disabled title="Re-compute drive times with ORS API">↺ Drive Times</button>
+          </div>
+        </div>
+        <div id="progress-wrap">
+          <progress id="progress-bar" max="100" value="0"></progress>
+          <div id="progress-status"></div>
+        </div>
+      </div>
+      <div id="map"></div>
+    </div>
+
+    <!-- DASHBOARD TAB -->
+    <div id="tab-dashboard" class="tab-panel">
+      <div class="content-panel">
+        <div class="ph">
+          <h2>Dashboard</h2>
+          <div class="ph-actions">
+            <button class="btn btn-secondary" onclick="exportPDF()">Export PDF Report</button>
+          </div>
+        </div>
+        <div id="dash-content"><div class="no-data"><strong>No data yet</strong>Upload a file and run clustering on the Map tab.</div></div>
+      </div>
+    </div>
+
+    <!-- PROCESSED DATA TAB -->
+    <div id="tab-processed" class="tab-panel">
+      <div class="content-panel">
+        <div class="ph">
+          <h2>Processed Data</h2>
+          <div class="ph-actions">
+            <button class="btn btn-secondary btn-sm" id="exportBtn2" onclick="exportExcel()" disabled>Export Excel</button>
+          </div>
+        </div>
+        <div id="proc-content"><div class="no-data"><strong>No data yet</strong>Upload a file and run clustering on the Map tab.</div></div>
+      </div>
+    </div>
+
+    <!-- COMP AREAS TAB -->
+    <div id="tab-comp" class="tab-panel">
+      <div class="content-panel">
+        <div class="ph"><h2>Comp Areas</h2><div class="ph-actions"><button class="btn btn-primary btn-sm" onclick="addCompRow()">+ Add Row</button></div></div>
+        <div class="two-col">
+          <div class="table-wrap" style="overflow-x:auto">
+            <table class="data-table"><thead><tr><th>Comp Area</th><th>Cluster #</th><th>Cont Size (yd)</th><th class="col-r">Price ($)</th><th class="col-r">Price / Yard</th><th></th></tr></thead>
+            <tbody id="comp-tbody"></tbody></table>
+          </div>
+          <div class="side-card">
+            <h4>Notes</h4>
+            <p class="side-note">Enter competitor name, the cluster # from the map, container size, and monthly price.</p>
+            <p class="side-note" style="color:#D97706;margin-top:8px">If a customer's current price already exceeds the competitor price, no increase is applied (hold pricing).</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MIN BASE PRICE TAB -->
+    <div id="tab-minprice" class="tab-panel">
+      <div class="content-panel">
+        <div class="ph"><h2>Min Base Price</h2><div class="ph-actions"><button class="btn btn-primary btn-sm" onclick="addMinRow()">+ Add Row</button></div></div>
+        <div class="two-col">
+          <div class="table-wrap" style="overflow-x:auto">
+            <table class="data-table"><thead><tr><th>Cont Size (yd)</th><th class="col-r">Min Base Price ($)</th><th class="col-r">Price / Yard</th><th></th></tr></thead>
+            <tbody id="min-tbody"></tbody></table>
+          </div>
+          <div class="side-card">
+            <h4>Discount Parameters</h4>
+            <div class="side-field"><label>Container Size Discount Rate</label><input type="text" id="min-discount-rate" value="0.0525" onchange="renderMinPrices()"></div>
+            <div class="side-field"><label>Starting $ per Yard</label><input type="text" id="min-start-pyard" value="17.60" onchange="renderMinPrices()"></div>
+            <p class="side-note">Lowest price you would accept. Overrides a competitor's price if it falls below this minimum.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PREFERRED PRICE TAB -->
+    <div id="tab-preferred" class="tab-panel">
+      <div class="content-panel">
+        <div class="ph"><h2>Preferred Price</h2><div class="ph-actions"><button class="btn btn-primary btn-sm" onclick="addPrefRow()">+ Add Row</button></div></div>
+        <div class="two-col">
+          <div class="table-wrap" style="overflow-x:auto">
+            <table class="data-table"><thead><tr><th>Cont Size (yd)</th><th class="col-r">Preferred Price ($)</th><th class="col-r">Price / Yard</th><th></th></tr></thead>
+            <tbody id="pref-tbody"></tbody></table>
+          </div>
+          <div class="side-card">
+            <h4>Notes</h4>
+            <p class="side-note">Target average prices to prevent price erosion.</p>
+            <p class="side-note">Adjusted upward for accounts beyond Epsilon miles using the Extra $/Mile driver.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SERVICE CODES TAB -->
+    <div id="tab-svcodes" class="tab-panel">
+      <div class="content-panel">
+        <div class="ph">
+          <h2>Service Code Table</h2>
+          <div class="ph-actions">
+            <button class="btn btn-primary btn-sm" onclick="addSvcRow()">+ Add Row</button>
+            <button class="btn btn-outline btn-sm" onclick="clearSvcCodes()" style="color:#DC2626;border-color:#DC2626">Clear Table</button>
+          </div>
+        </div>
+        <div class="alert alert-info" style="margin-bottom:16px">
+          This table maps service codes to container sizes. When empty and you upload a file, it auto-populates with unique codes from that upload. Clearing and re-uploading resets from the new file.
+        </div>
+        <div class="table-wrap" style="overflow-x:auto">
+          <table class="data-table"><thead><tr><th>Svc Code (Svc_Code_Alpha)</th><th>Container Size (yd)</th><th>Description</th><th></th></tr></thead>
+          <tbody id="svc-tbody"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tab-content -->
+
+  <!-- HELP MODAL -->
+  <div id="help-overlay" onclick="closeHelpOutside(event)">
+    <div id="help-modal">
+      <div class="hm-hdr"><h2>Help — Required Columns &amp; Parameters</h2><button class="modal-close" onclick="closeHelp()">×</button></div>
+      <div class="hm-body">
+        <div class="help-sec">
+          <h3>Mode 1 — Latitude / Longitude</h3>
+          <table class="help-table"><thead><tr><th>Column</th><th>Required</th><th>Notes</th></tr></thead><tbody>
+            <tr><td><code>Account#</code></td><td><span class="badge badge-green">Required</span></td><td>Unique ID per service line</td></tr>
+            <tr><td><code>Latitude</code></td><td><span class="badge badge-green">Required</span></td><td>Decimal degrees, e.g. 33.1234</td></tr>
+            <tr><td><code>Longitude</code></td><td><span class="badge badge-green">Required</span></td><td>Decimal degrees, e.g. -98.5678</td></tr>
+            <tr><td><code>Svc_Code_Alpha</code></td><td><span class="badge badge-blue">Recommended</span></td><td>Matched to Service Code Table for container size</td></tr>
+            <tr><td><code>Amount</code></td><td><span class="badge badge-blue">Recommended</span></td><td>Monthly service price = Current Price</td></tr>
+            <tr><td><code>Mult</code></td><td><span class="badge badge-blue">Recommended</span></td><td>Quantity / multiplier</td></tr>
+            <tr><td><code>TotalAmount</code></td><td><span class="badge badge-blue">Recommended</span></td><td>Used in Dashboard revenue summary</td></tr>
+          </tbody></table>
+        </div>
+        <div class="help-sec">
+          <h3>Mode 2 — Geocode Address</h3>
+          <table class="help-table"><thead><tr><th>Column</th><th>Required</th></tr></thead><tbody>
+            <tr><td><code>Account#</code></td><td><span class="badge badge-green">Required</span></td></tr>
+            <tr><td><code>Service Add Num</code></td><td><span class="badge badge-green">Required</span></td></tr>
+            <tr><td><code>Service Address</code></td><td><span class="badge badge-green">Required</span></td></tr>
+            <tr><td><code>Service City</code></td><td><span class="badge badge-green">Required</span></td></tr>
+            <tr><td><code>Service State</code></td><td><span class="badge badge-green">Required</span></td></tr>
+          </tbody></table>
+        </div>
+        <div class="help-sec">
+          <h3>Pricing Driver Parameters</h3>
+          <div class="hp"><span class="hp-name">Qty Discount</span><span class="hp-desc">Discount on Preferred Price when a service line has Qty &gt; 1. Enter as % (e.g. 30%).</span></div>
+          <div class="hp"><span class="hp-name">Extra $/Mile</span><span class="hp-desc">Extra charge per mile for accounts beyond Epsilon from their nearest neighbor.</span></div>
+          <div class="hp"><span class="hp-name">PI Rate</span><span class="hp-desc">Target price increase %. Enter as % (e.g. 10%).</span></div>
+          <div class="hp"><span class="hp-name">Pref Buffer</span><span class="hp-desc">Price ceiling = Preferred Price × (1 + Pref Buffer%). Enter as % (e.g. 40%).</span></div>
+          <div class="hp"><span class="hp-name">ORS API Key</span><span class="hp-desc">Free key from openrouteservice.org for drive-time nearest neighbor. Leave blank for straight-line miles.</span></div>
+        </div>
+        <div class="help-sec">
+          <h3>Service Code → Container Size Fallback Patterns</h3>
+          <table class="help-table"><thead><tr><th>Pattern</th><th>Container Size</th></tr></thead><tbody>
+            <tr><td><code>F2Y…</code>, <code>R2Y…</code></td><td>2 yd</td></tr>
+            <tr><td><code>F{n}Y…</code>, <code>R{n}Y…</code></td><td><em>n</em> yd</td></tr>
+            <tr><td><code>RESCRT…</code>, <code>ADDCART…</code></td><td>0.5 yd</td></tr>
+            <tr><td>Anything else</td><td>0.5 yd (default)</td></tr>
+          </tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PDF AREA -->
+  <div id="pdf-area"></div>
+
+</div><!-- /app -->
+
+<!-- LIBRARIES -->
+<script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js" crossorigin=""></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/@turf/turf/turf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

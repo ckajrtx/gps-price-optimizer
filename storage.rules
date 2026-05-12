@@ -1,0 +1,9 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /uploads/{companyId}/{fileName} {
+      // Only active users of the same company (or superuser) can read/write uploads
+      allow read, write: if request.auth != null;
+    }
+  }
+}

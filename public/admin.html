@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuoteIQ — Admin Dashboard</title>
+  <link rel="stylesheet" href="/css/shared.css">
+  <style>
+    body { background:var(--slate-100); }
+    #shell { display:flex; flex-direction:column; height:100vh; overflow:hidden; }
+
+    /* TOP BAR */
+    #top-bar { display:flex; align-items:center; background:#fff; border-bottom:1px solid #E2E8F0;
+      height:50px; padding:0 20px; flex-shrink:0; box-shadow:var(--shadow-sm); gap:12px; }
+    .brand { font-weight:700; font-size:15px; letter-spacing:-.3px; }
+    .brand span { color:var(--blue); }
+    .admin-badge { background:#FEF3C7; color:#B45309; border-radius:4px; padding:2px 8px;
+      font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; }
+    .top-right { margin-left:auto; display:flex; align-items:center; gap:10px; }
+
+    /* TABS */
+    .adm-tabs { display:flex; border-bottom:1px solid #E2E8F0; background:#fff; padding:0 20px;
+      flex-shrink:0; gap:4px; }
+    .adm-tab { background:none; border:none; padding:0 16px; height:44px; cursor:pointer;
+      font-family:inherit; font-size:13px; font-weight:500; color:#64748B;
+      border-bottom:2px solid transparent; margin-bottom:-1px; transition:color .15s,border-color .15s; }
+    .adm-tab:hover { color:var(--blue); }
+    .adm-tab.active { color:var(--blue); border-bottom-color:var(--blue); }
+
+    /* CONTENT */
+    #adm-content { flex:1; overflow-y:auto; padding:24px; }
+    .adm-panel { display:none; }
+    .adm-panel.active { display:block; }
+    .ph { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
+    .ph h2 { margin:0; font-size:18px; font-weight:700; }
+
+    /* STATS ROW */
+    .stat-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:24px; }
+    .stat-card { background:#fff; border:1px solid #E2E8F0; border-radius:8px; padding:16px 18px; }
+    .stat-card .s-num { font-size:28px; font-weight:700; color:var(--blue); }
+    .stat-card .s-lbl { font-size:12px; color:#64748B; margin-top:2px; }
+
+    /* TABLE SHELL */
+    .tbl-shell { background:#fff; border:1px solid #E2E8F0; border-radius:8px; overflow:hidden; }
+    .tbl-shell table { width:100%; border-collapse:collapse; font-size:13px; }
+    .tbl-shell thead th { background:#F8FAFC; padding:10px 14px; text-align:left;
+      font-weight:600; color:#475569; font-size:11px; text-transform:uppercase;
+      letter-spacing:.5px; border-bottom:1px solid #E2E8F0; }
+    .tbl-shell tbody td { padding:10px 14px; border-bottom:1px solid #F8FAFC; vertical-align:middle; }
+    .tbl-shell tbody tr:last-child td { border-bottom:none; }
+    .tbl-shell tbody tr:hover td { background:#FAFBFC; }
+
+    /* MODAL */
+    .modal-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:9000; align-items:center; justify-content:center; }
+    .modal-overlay.open { display:flex; }
+    .modal-box { background:#fff; border-radius:10px; padding:28px; width:420px; max-width:96vw;
+      box-shadow:0 25px 60px rgba(0,0,0,.22); }
+    .modal-box h3 { margin:0 0 18px; font-size:16px; font-weight:700; }
+    .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:20px; }
+
+    .link-box { background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; padding:10px 12px;
+      font-size:12px; font-family:monospace; word-break:break-all; color:#1E293B;
+      margin:12px 0; user-select:all; }
+    .copy-note { font-size:11px; color:#64748B; text-align:center; }
+
+    #loading-overlay { display:none; position:fixed; inset:0; background:rgba(255,255,255,.7); z-index:8000; align-items:center; justify-content:center; }
+    #loading-overlay.show { display:flex; }
+  </style>
+</head>
+<body>
+<div id="shell">
+
+  <!-- TOP BAR -->
+  <div id="top-bar">
+    <div class="brand">Quote<span>IQ</span></div>
+    <div class="admin-badge">Super Admin</div>
+    <div class="top-right">
+      <div class="avatar" id="user-avatar">?</div>
+      <span id="user-name" style="font-size:13px;font-weight:500;color:#1E293B">…</span>
+      <button class="btn btn-outline btn-sm" onclick="signOutUser()">Sign Out</button>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <div class="adm-tabs">
+    <button class="adm-tab active" data-tab="companies" onclick="switchTab('companies')">Companies</button>
+    <button class="adm-tab" data-tab="users" onclick="switchTab('users')">Users</button>
+    <button class="adm-tab" data-tab="invites" onclick="switchTab('invites')">Invites</button>
+  </div>
+
+  <!-- CONTENT -->
+  <div id="adm-content">
+
+    <!-- COMPANIES -->
+    <div id="panel-companies" class="adm-panel active">
+      <div class="ph">
+        <h2>Companies</h2>
+        <button class="btn btn-primary btn-sm" onclick="openAddCompany()">+ Add Company</button>
+      </div>
+      <div id="companies-stats" class="stat-row"></div>
+      <div class="tbl-shell">
+        <table><thead><tr><th>Company</th><th>Status</th><th>Users</th><th>Created</th><th>Actions</th></tr></thead>
+        <tbody id="comp-tbody"><tr><td colspan="5" style="text-align:center;color:#94A3B8;padding:20px">Loading…</td></tr></tbody></table>
+      </div>
+    </div>
+
+    <!-- USERS -->
+    <div id="panel-users" class="adm-panel">
+      <div class="ph">
+        <h2>All Users</h2>
+        <button class="btn btn-primary btn-sm" onclick="openInvite(null)">+ Invite User</button>
+      </div>
+      <div class="tbl-shell">
+        <table><thead><tr><th>Name</th><th>Email</th><th>Company</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody id="users-tbody"><tr><td colspan="6" style="text-align:center;color:#94A3B8;padding:20px">Loading…</td></tr></tbody></table>
+      </div>
+    </div>
+
+    <!-- INVITES -->
+    <div id="panel-invites" class="adm-panel">
+      <div class="ph">
+        <h2>Sent Invites</h2>
+        <button class="btn btn-primary btn-sm" onclick="openInvite(null)">+ New Invite</button>
+      </div>
+      <div class="tbl-shell">
+        <table><thead><tr><th>Email</th><th>Company</th><th>Sent</th><th>Expires</th><th>Status</th><th>Link</th></tr></thead>
+        <tbody id="inv-tbody"><tr><td colspan="6" style="text-align:center;color:#94A3B8;padding:20px">Loading…</td></tr></tbody></table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ADD COMPANY MODAL -->
+<div id="modal-add-company" class="modal-overlay" onclick="closeModalOutside(event,'modal-add-company')">
+  <div class="modal-box">
+    <h3>Add Company</h3>
+    <div id="add-comp-error" class="alert alert-error" style="display:none;margin-bottom:12px"></div>
+    <div class="field"><label>Company Name</label><input type="text" id="new-comp-name" placeholder="Acme Waste Services"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modal-add-company')">Cancel</button>
+      <button class="btn btn-primary" id="add-comp-btn" onclick="submitAddCompany()">Add Company</button>
+    </div>
+  </div>
+</div>
+
+<!-- INVITE MODAL -->
+<div id="modal-invite" class="modal-overlay" onclick="closeModalOutside(event,'modal-invite')">
+  <div class="modal-box">
+    <h3>Invite User</h3>
+    <div id="inv-error" class="alert alert-error" style="display:none;margin-bottom:12px"></div>
+    <div id="inv-form">
+      <div class="field">
+        <label>Email Address</label>
+        <input type="email" id="inv-email" placeholder="user@company.com">
+      </div>
+      <div class="field">
+        <label>Company</label>
+        <select id="inv-company" class="select"></select>
+      </div>
+      <div class="field">
+        <label>Role</label>
+        <select id="inv-role" class="select">
+          <option value="user">User</option>
+          <option value="superuser">Super Admin</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeModal('modal-invite')">Cancel</button>
+        <button class="btn btn-primary" id="inv-btn" onclick="submitInvite()">Generate Invite Link</button>
+      </div>
+    </div>
+    <div id="inv-result" style="display:none">
+      <p style="font-size:13px;color:#475569;margin:0 0 4px">Copy and send this link to the user:</p>
+      <div class="link-box" id="inv-link"></div>
+      <p class="copy-note">Link expires in 7 days.</p>
+      <div style="text-align:center;margin-top:14px">
+        <button class="btn btn-outline btn-sm" onclick="copyInviteLink()">Copy Link</button>
+        <button class="btn btn-primary btn-sm" style="margin-left:8px" onclick="closeModal('modal-invite')">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- LOADING OVERLAY -->
+<div id="loading-overlay"><div class="spinner"></div></div>
+
+<script type="module">
+import { requireSuperuser, signOutUser as authSignOut } from '/js/auth.js';
+import {
+  getAllCompanies, createCompany, updateCompanyStatus,
+  getAllUsers, updateUserStatus,
+  createInvite
+} from '/js/db.js';
+import { collection, getDocs, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { db } from '/js/firebase-init.js';
+
+let state = { companies: [], users: [], companyMap: {} };
+
+requireSuperuser(async (firebaseUser, userDoc) => {
+  const initials = (userDoc.displayName || userDoc.email || 'SA')
+    .split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  document.getElementById('user-avatar').textContent = initials;
+  document.getElementById('user-name').textContent   = userDoc.displayName || userDoc.email;
+  await loadAll();
+});
+
+async function loadAll() {
+  setLoading(true);
+  const [companies, users] = await Promise.all([getAllCompanies(), getAllUsers()]);
+  state.companies  = companies;
+  state.users      = users;
+  state.companyMap = Object.fromEntries(companies.map(c => [c.id, c]));
+  setLoading(false);
+  renderCompanies();
+  renderUsers();
+  renderInvites();
+}
+
+// ── TABS ──────────────────────────────────────────────────────────
+window.switchTab = function(tab) {
+  document.querySelectorAll('.adm-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.adm-panel').forEach(p => p.classList.toggle('active', p.id === `panel-${tab}`));
+};
+
+// ── COMPANIES ─────────────────────────────────────────────────────
+function renderCompanies() {
+  const active   = state.companies.filter(c => c.status !== 'inactive').length;
+  const inactive = state.companies.length - active;
+  document.getElementById('companies-stats').innerHTML = `
+    <div class="stat-card"><div class="s-num">${state.companies.length}</div><div class="s-lbl">Total Companies</div></div>
+    <div class="stat-card"><div class="s-num" style="color:var(--green)">${active}</div><div class="s-lbl">Active</div></div>
+    <div class="stat-card"><div class="s-num" style="color:#94A3B8">${inactive}</div><div class="s-lbl">Inactive</div></div>
+    <div class="stat-card"><div class="s-num">${state.users.length}</div><div class="s-lbl">Total Users</div></div>`;
+
+  const tbody = document.getElementById('comp-tbody');
+  if (!state.companies.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#94A3B8;padding:20px">No companies yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = state.companies.map(c => {
+    const userCount = state.users.filter(u => u.companyId === c.id).length;
+    const isActive  = c.status !== 'inactive';
+    const created   = c.createdAt?.toDate ? c.createdAt.toDate().toLocaleDateString() : '—';
+    return `<tr>
+      <td><strong>${esc(c.name)}</strong><br><span style="font-size:11px;color:#94A3B8">${c.id}</span></td>
+      <td><span class="badge ${isActive ? 'badge-green' : 'badge-gray'}">${isActive ? 'Active' : 'Inactive'}</span></td>
+      <td>${userCount}</td>
+      <td>${created}</td>
+      <td style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-outline btn-sm" onclick="toggleCompany('${c.id}','${isActive ? 'inactive' : 'active'}')">${isActive ? 'Deactivate' : 'Activate'}</button>
+        <button class="btn btn-secondary btn-sm" onclick="openInvite('${c.id}')">Invite User</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+window.openAddCompany = function() {
+  document.getElementById('new-comp-name').value = '';
+  document.getElementById('add-comp-error').style.display = 'none';
+  openModal('modal-add-company');
+};
+
+window.submitAddCompany = async function() {
+  const name = document.getElementById('new-comp-name').value.trim();
+  if (!name) return showErr('add-comp-error', 'Enter a company name.');
+  const btn = document.getElementById('add-comp-btn');
+  btn.disabled = true; btn.textContent = 'Adding…';
+  try {
+    await createCompany(name, null);
+    closeModal('modal-add-company');
+    await loadAll();
+  } catch (e) {
+    showErr('add-comp-error', e.message);
+    btn.disabled = false; btn.textContent = 'Add Company';
+  }
+};
+
+window.toggleCompany = async function(id, newStatus) {
+  if (!confirm(`${newStatus === 'inactive' ? 'Deactivate' : 'Activate'} this company?`)) return;
+  setLoading(true);
+  try {
+    await updateCompanyStatus(id, newStatus);
+    await loadAll();
+  } finally { setLoading(false); }
+};
+
+// ── USERS ─────────────────────────────────────────────────────────
+function renderUsers() {
+  const tbody = document.getElementById('users-tbody');
+  if (!state.users.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#94A3B8;padding:20px">No users yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = state.users.map(u => {
+    const company  = state.companyMap[u.companyId]?.name || u.companyId || '—';
+    const isActive = u.status !== 'inactive';
+    return `<tr>
+      <td><strong>${esc(u.displayName || '—')}</strong></td>
+      <td>${esc(u.email || '—')}</td>
+      <td>${esc(company)}</td>
+      <td><span class="badge badge-blue">${u.role || 'user'}</span></td>
+      <td><span class="badge ${isActive ? 'badge-green' : 'badge-gray'}">${isActive ? 'Active' : 'Inactive'}</span></td>
+      <td style="display:flex;gap:6px">
+        <button class="btn btn-outline btn-sm" onclick="toggleUser('${u.id}','${isActive ? 'inactive' : 'active'}')">${isActive ? 'Deactivate' : 'Activate'}</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+window.toggleUser = async function(uid, newStatus) {
+  const action = newStatus === 'inactive' ? 'Deactivate' : 'Reactivate';
+  if (!confirm(`${action} this user?`)) return;
+  setLoading(true);
+  try {
+    await updateUserStatus(uid, newStatus);
+    await loadAll();
+  } finally { setLoading(false); }
+};
+
+// ── INVITES ───────────────────────────────────────────────────────
+let _invites = [];
+async function renderInvites() {
+  const tbody = document.getElementById('inv-tbody');
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#94A3B8;padding:12px">Loading…</td></tr>';
+  try {
+    const { getDocs: gd, collection: col, query: q, orderBy: ob } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');
+    const snap = await gd(q(col(db, 'invites'), ob('createdAt', 'desc')));
+    _invites = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (_) { _invites = []; }
+
+  if (!_invites.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#94A3B8;padding:20px">No invites sent yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = _invites.map(inv => {
+    const company  = state.companyMap[inv.companyId]?.name || inv.companyId || '—';
+    const created  = inv.createdAt?.toDate ? inv.createdAt.toDate().toLocaleDateString() : '—';
+    const exp      = inv.expiresAt?.toDate ? inv.expiresAt.toDate() : (inv.expiresAt ? new Date(inv.expiresAt) : null);
+    const expStr   = exp ? exp.toLocaleDateString() : '—';
+    const expired  = exp && exp < new Date();
+    const statusLabel = inv.used ? 'Used' : expired ? 'Expired' : 'Pending';
+    const statusCls   = inv.used ? 'badge-gray' : expired ? 'badge-orange' : 'badge-green';
+    const link = `${location.origin}/join.html?token=${inv.id}`;
+    return `<tr>
+      <td>${esc(inv.email)}</td>
+      <td>${esc(company)}</td>
+      <td>${created}</td>
+      <td>${expStr}</td>
+      <td><span class="badge ${statusCls}">${statusLabel}</span></td>
+      <td><button class="btn btn-outline btn-sm" onclick="copyLink('${link}')">Copy Link</button></td>
+    </tr>`;
+  }).join('');
+}
+
+window.copyLink = function(link) {
+  navigator.clipboard.writeText(link).then(() => alert('Link copied!')).catch(() => prompt('Copy this link:', link));
+};
+
+// ── INVITE MODAL ──────────────────────────────────────────────────
+window.openInvite = function(preselectedCompanyId) {
+  const sel = document.getElementById('inv-company');
+  sel.innerHTML = state.companies.filter(c => c.status !== 'inactive').map(c =>
+    `<option value="${c.id}" ${c.id === preselectedCompanyId ? 'selected' : ''}>${esc(c.name)}</option>`
+  ).join('');
+  document.getElementById('inv-email').value = '';
+  document.getElementById('inv-error').style.display = 'none';
+  document.getElementById('inv-form').style.display   = 'block';
+  document.getElementById('inv-result').style.display = 'none';
+  openModal('modal-invite');
+};
+
+window.submitInvite = async function() {
+  const email     = document.getElementById('inv-email').value.trim();
+  const companyId = document.getElementById('inv-company').value;
+  const role      = document.getElementById('inv-role').value;
+  if (!email || !companyId) return showErr('inv-error', 'Fill in all fields.');
+  const btn = document.getElementById('inv-btn');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  try {
+    const token = await createInvite(email, companyId, null, role);
+    const link  = `${location.origin}/join.html?token=${token}`;
+    document.getElementById('inv-link').textContent    = link;
+    document.getElementById('inv-form').style.display   = 'none';
+    document.getElementById('inv-result').style.display = 'block';
+    await renderInvites();
+  } catch (e) {
+    showErr('inv-error', e.message);
+    btn.disabled = false; btn.textContent = 'Generate Invite Link';
+  }
+};
+
+window.copyInviteLink = function() {
+  const link = document.getElementById('inv-link').textContent;
+  navigator.clipboard.writeText(link).then(() => alert('Copied!')).catch(() => prompt('Copy:', link));
+};
+
+// ── MODAL HELPERS ─────────────────────────────────────────────────
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+window.closeModal = function(id) { document.getElementById(id).classList.remove('open'); };
+window.closeModalOutside = function(e, id) { if (e.target.id === id) window.closeModal(id); };
+function showErr(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg; el.style.display = 'flex';
+}
+
+// ── SIGN OUT ───────────────────────────────────────────────────────
+window.signOutUser = async function() { await authSignOut(); };
+
+function setLoading(on) {
+  document.getElementById('loading-overlay').classList.toggle('show', on);
+}
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>
