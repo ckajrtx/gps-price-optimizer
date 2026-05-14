@@ -654,11 +654,9 @@ function calcRowPricing(props) {
   const minPrice   = lookupMinPrice(contSize);
   let   prefPrice  = lookupPrefPrice(contSize) || 0;
 
-  // Outlier surcharge only applies to noise (unclustered) accounts.
-  // Clustering uses straight-line distance; dist_to_nearest uses road distance (OSRM),
-  // so in-cluster accounts can have road dist > epsilon — they should NOT be surcharged.
-  const isNoise = clusterNum < 0;
-  let prefAdj = prefPrice + (isNoise ? Math.max(0, dist - s.epsilon) * s.extraChargePerMile : 0);
+  // Outlier surcharge applies whenever road distance exceeds epsilon,
+  // including in-cluster accounts (clustering uses straight-line; dist uses road miles).
+  let prefAdj = prefPrice + Math.max(0, dist - s.epsilon) * s.extraChargePerMile;
   if (mult > 1) prefAdj = prefAdj * (1 - s.quantityDiscount);
   prefAdj = +prefAdj.toFixed(2);
 
