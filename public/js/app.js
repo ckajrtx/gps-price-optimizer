@@ -316,11 +316,6 @@ window.processFile = async function() {
   state.features = features;
   recalcPricing();
 
-  setProgress(true, 'Saving to cloud…', 95);
-  try {
-    await saveUpload(state.companyId, state.userId, file.name, state.features);
-  } catch (e) { console.warn('Upload save failed:', e); }
-
   state.pendingFile = null;
   setProgress(false);
   setExportEnabled(true);
@@ -328,6 +323,10 @@ window.processFile = async function() {
   plotClusters();
   renderProcessedData();
   renderDashboard();
+
+  // Save to cloud in background — don't block the UI
+  saveUpload(state.companyId, state.userId, file.name, state.features)
+    .catch(e => console.warn('Cloud save skipped (Storage may not be enabled):', e));
 };
 
 // ── REFRESH DRIVE TIMES (ORS re-call only) ──────────────────────
