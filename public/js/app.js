@@ -654,8 +654,11 @@ function calcRowPricing(props) {
   const minPrice   = lookupMinPrice(contSize);
   let   prefPrice  = lookupPrefPrice(contSize) || 0;
 
-  // Adjust preferred price for outliers beyond epsilon
-  let prefAdj = prefPrice + Math.max(0, dist - s.epsilon) * s.extraChargePerMile;
+  // Outlier surcharge only applies to noise (unclustered) accounts.
+  // Clustering uses straight-line distance; dist_to_nearest uses road distance (OSRM),
+  // so in-cluster accounts can have road dist > epsilon — they should NOT be surcharged.
+  const isNoise = clusterNum < 0;
+  let prefAdj = prefPrice + (isNoise ? Math.max(0, dist - s.epsilon) * s.extraChargePerMile : 0);
   if (mult > 1) prefAdj = prefAdj * (1 - s.quantityDiscount);
   prefAdj = +prefAdj.toFixed(2);
 
@@ -708,7 +711,7 @@ const PROC_COLS = [
   { key: 'cluster',            label: 'Cluster #',        type: 'num' },
   { key: 'dbscan',             label: 'Type',             type: 'str' },
   { key: 'nearest_point',      label: 'Nearest Acct',     type: 'str' },
-  { key: 'distance_to_nearest',label: 'Dist (mi)',        type: 'num' },
+  { key: 'distance_to_nearest',label: 'Dist (mi, road)',  type: 'num' },
   { key: 'piPrice',            label: "PI'd Price",       type: '$',  calc: true },
   { key: 'priceMatch',         label: 'Price Match',      type: '$',  calc: true },
   { key: 'minPrice',           label: 'Min Price',        type: '$',  calc: true },
