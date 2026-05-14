@@ -226,9 +226,9 @@
     <div class="sf wide">
       <div class="tooltip-wrap">
         <label>ORS API Key</label><span class="ti">i</span>
-        <div class="tip">Free key from openrouteservice.org. Enables drive-time nearest neighbor. Leave blank for straight-line distance.</div>
+        <div class="tip">Free key from openrouteservice.org for faster drive-time routing. Leave blank to use OSRM (free road routing, no key required).</div>
       </div>
-      <input type="text" id="s-ors-key" placeholder="Leave blank for straight-line" onchange="onSettingsChange()">
+      <input type="text" id="s-ors-key" placeholder="Leave blank to use OSRM (free road routing)" onchange="onSettingsChange()">
     </div>
     <button class="btn btn-outline btn-sm" id="save-settings-btn" onclick="persistSettings()" style="margin-left:auto">Save Settings</button>
   </div>
@@ -423,7 +423,7 @@
           <div class="hp"><span class="hp-name">Extra $/Mile</span><span class="hp-desc">Extra charge per mile for accounts beyond Epsilon from their nearest neighbor.</span></div>
           <div class="hp"><span class="hp-name">PI Rate</span><span class="hp-desc">Target price increase %. Enter as % (e.g. 10%).</span></div>
           <div class="hp"><span class="hp-name">Pref Buffer</span><span class="hp-desc">Price ceiling = Preferred Price × (1 + Pref Buffer%). Enter as % (e.g. 40%).</span></div>
-          <div class="hp"><span class="hp-name">ORS API Key</span><span class="hp-desc">Free key from openrouteservice.org for drive-time nearest neighbor. Leave blank for straight-line miles.</span></div>
+          <div class="hp"><span class="hp-name">ORS API Key</span><span class="hp-desc">Optional key from openrouteservice.org. Leave blank to use OSRM (free road routing, no key required). Enter a key to use ORS instead.</span></div>
         </div>
         <div class="help-sec">
           <h3>Service Code → Container Size Fallback Patterns</h3>

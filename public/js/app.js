@@ -323,7 +323,7 @@ window.processFile = async function() {
   if (orsKey) {
     features = await computeNNORS(features, orsKey, (p) => setProgress(true, `Drive times ${p}%…`, 75 + p * 0.2));
   } else {
-    features = computeNNTurf(features);
+    features = await computeNNOSRM(features, (p) => setProgress(true, `Drive times (OSRM) ${p}%…`, 75 + p * 0.2));
   }
 
   state.features = features;
@@ -344,11 +344,14 @@ window.processFile = async function() {
 
 // ── REFRESH DRIVE TIMES (ORS re-call only) ──────────────────────
 window.refreshNN = async function() {
-  const orsKey = document.getElementById('s-ors-key').value.trim();
-  if (!orsKey) { alert('Enter an ORS API key in the Pricing Drivers bar first.'); return; }
   if (!state.features.length) return;
+  const orsKey = document.getElementById('s-ors-key').value.trim();
   setProgress(true, 'Refreshing drive times…', 10);
-  state.features = await computeNNORS(state.features, orsKey, (p) => setProgress(true, `Drive times ${p}%…`, p));
+  if (orsKey) {
+    state.features = await computeNNORS(state.features, orsKey, (p) => setProgress(true, `Drive times ${p}%…`, p));
+  } else {
+    state.features = await computeNNOSRM(state.features, (p) => setProgress(true, `Drive times (OSRM) ${p}%…`, p));
+  }
   recalcPricing();
   setProgress(false);
   renderProcessedData();
@@ -514,6 +517,87 @@ async function computeNNORS(features, orsKey, onPct) {
 
     if (onPct) onPct(Math.round(((src + CHUNK) / total) * 100));
     if (src + CHUNK < total) await sleep(1600); // ORS rate limit
+  }
+  return out;
+}
+
+// ── NEAREST NEIGHBOR — OSRM (free road routing, no API key) ──────
+async function computeNNOSRM(features, onPct) {
+  const total = features.length;
+  const out   = features.map(f => ({ ...f, properties: { ...f.properties } }));
+  const K     = Math.min(20, total - 1);
+
+  // Pre-select top-K candidates per feature by squared-degree distance (fast, no trig)
+  const candidates = features.map((f, i) => {
+    const [fx, fy] = f.geometry.coordinates;
+    return features
+      .map((other, j) => {
+        if (j === i) return { j, d: Infinity };
+        const dx = fx - other.geometry.coordinates[0];
+        const dy = fy - other.geometry.coordinates[1];
+        return { j, d: dx * dx + dy * dy };
+      })
+      .sort((a, b) => a.d - b.d)
+      .slice(0, K)
+      .map(x => x.j);
+  });
+
+  const BATCH = 5;
+  let processed = 0;
+
+  for (let bStart = 0; bStart < total; bStart += BATCH) {
+    const bSrcIdx = [];
+    for (let k = 0; k < BATCH && bStart + k < total; k++) bSrcIdx.push(bStart + k);
+
+    // Unique coord indices: sources + all their candidates
+    const coordIdxSet = new Set(bSrcIdx);
+    bSrcIdx.forEach(si => candidates[si].forEach(di => coordIdxSet.add(di)));
+    const coordIdxArr = [...coordIdxSet];
+
+    const coordStr    = coordIdxArr.map(i => `${features[i].geometry.coordinates[0]},${features[i].geometry.coordinates[1]}`).join(';');
+    const srcPositions = bSrcIdx.map(si => coordIdxArr.indexOf(si)).join(';');
+
+    try {
+      const resp = await fetch(
+        `https://router.project-osrm.org/table/v1/driving/${coordStr}?sources=${srcPositions}&annotations=distance`
+      );
+      if (!resp.ok) throw new Error(`OSRM HTTP ${resp.status}`);
+      const data = await resp.json();
+      if (data.code !== 'Ok') throw new Error('OSRM: ' + data.code);
+
+      data.distances.forEach((row, rowIdx) => {
+        const fi     = bSrcIdx[rowIdx];
+        const myAcct = features[fi].properties['Account#'];
+        let minDist = Infinity, nearPt = null;
+        row.forEach((meters, colIdx) => {
+          const di = coordIdxArr[colIdx];
+          if (di === fi) return;
+          if (features[di].properties['Account#'] === myAcct) return;
+          if (meters == null) return;
+          const miles = meters * 0.000621371;
+          if (miles < minDist) { minDist = miles; nearPt = features[di].properties['Account#'] || `row ${di}`; }
+        });
+        out[fi].properties.nearest_point       = nearPt;
+        out[fi].properties.distance_to_nearest = minDist === Infinity ? 0 : +minDist.toFixed(4);
+      });
+    } catch (e) {
+      console.warn('OSRM batch failed, falling back to straight-line:', e);
+      bSrcIdx.forEach(fi => {
+        const myAcct = features[fi].properties['Account#'];
+        let minDist = Infinity, nearPt = null;
+        features.forEach((other, di) => {
+          if (di === fi || other.properties['Account#'] === myAcct) return;
+          const d = turf.distance(features[fi], other, { units: 'miles' });
+          if (d < minDist) { minDist = d; nearPt = other.properties['Account#'] || `row ${di}`; }
+        });
+        out[fi].properties.nearest_point       = nearPt;
+        out[fi].properties.distance_to_nearest = minDist === Infinity ? 0 : +minDist.toFixed(4);
+      });
+    }
+
+    processed += bSrcIdx.length;
+    if (onPct) onPct(Math.round((processed / total) * 100));
+    if (bStart + BATCH < total) await sleep(500); // OSRM demo courtesy rate limit
   }
   return out;
 }
