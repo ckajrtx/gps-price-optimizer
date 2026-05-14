@@ -219,7 +219,20 @@ function plotClusters() {
     const m   = L.circleMarker([lat, lon], {
       radius: 6, fillColor: col, color: '#fff',
       weight: 1.5, fillOpacity: 0.85
-    }).bindPopup(`<b>${p['Account#'] || 'Account'}</b><br>Cluster: ${cn >= 0 ? cn : 'noise'}<br>Dist: ${(p.distance_to_nearest || 0).toFixed(2)} mi`);
+    }).bindPopup((() => {
+      const addrParts = [
+        p['Service Add Num'], p['Service Address'],
+        p['Service City'],    p['Service State']
+      ].filter(Boolean);
+      const addr = addrParts.length ? addrParts.join(' ') : '—';
+      return `<div style="min-width:190px;font-family:inherit;font-size:12px;line-height:1.7">
+        <div style="font-weight:700;font-size:13px;margin-bottom:3px;color:#1E293B">${esc(String(p['Account#'] || 'Account'))}</div>
+        <div style="color:#475569;margin-bottom:6px">${esc(addr)}</div>
+        <hr style="border:none;border-top:1px solid #E2E8F0;margin:0 0 6px">
+        <div><span style="color:#64748B">Cluster:</span> <b>${cn >= 0 ? cn : 'noise'}</b></div>
+        <div><span style="color:#64748B">Nearest dist:</span> <b>${(p.distance_to_nearest || 0).toFixed(2)} mi</b></div>
+      </div>`;
+    })());
     markers.push(m);
   });
   state.clusterLayer = L.layerGroup(markers).addTo(state.map);
