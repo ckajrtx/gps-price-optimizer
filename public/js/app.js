@@ -849,7 +849,7 @@ function calcRowPricing(props) {
   // Outlier surcharge applies whenever road distance exceeds epsilon,
   // including in-cluster accounts (clustering uses straight-line; dist uses road miles).
   let prefAdj = prefPrice + Math.max(0, dist - s.epsilon) * s.extraChargePerMile;
-  if (mult > 1) prefAdj = prefAdj * (1 - s.quantityDiscount);
+  if (mult > 1) prefAdj = (prefAdj * (mult - 1) * (1 - s.quantityDiscount) + prefAdj) / mult;
   prefAdj = +prefAdj.toFixed(2);
 
   const ceiling = +(prefAdj * (1 + s.prefBuffer)).toFixed(2);
