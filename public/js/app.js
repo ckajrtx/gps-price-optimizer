@@ -9,7 +9,8 @@ import {
   getPrefPrices, savePrefPrices,
   getServiceCodes, saveServiceCodes,
   clearServiceCodes as dbClearSvcCodes,
-  getLatestUpload, saveUpload,
+  getSessions, createSession, updateSessionData,
+  renameSession, deleteSession, loadSessionFeatures,
   debounce
 } from '/js/db.js';
 
@@ -25,6 +26,11 @@ const state = {
   minPrices:    [],
   prefPrices:   [],
   svcCodes:     [],
+  sessions:     [],       // list of saved session metadata from Firestore
+  activeSessionId:       null,  // Firestore doc id of currently loaded session
+  activeSessionName:     null,  // display name shown in top bar
+  activeSessionStorageRef: null,// Storage path for re-saving in place
+  activeFileName:        '',    // original Excel filename of current data
   settings: {
     epsilon: 3, minPoints: 5,
     quantityDiscount: 0.30, extraChargePerMile: 15,
@@ -49,13 +55,13 @@ requireAuth(async (firebaseUser, userDoc) => {
   document.getElementById('user-role').textContent   = userDoc.role === 'superuser' ? 'Super Admin' : 'User';
 
   // Load all company data in parallel
-  const [settings, compAreas, minPrices, prefPrices, svcCodes, latestUpload] = await Promise.all([
+  const [settings, compAreas, minPrices, prefPrices, svcCodes, sessions] = await Promise.all([
     getSettings(state.companyId),
     getCompAreas(state.companyId),
     getMinPrices(state.companyId),
     getPrefPrices(state.companyId),
     getServiceCodes(state.companyId),
-    getLatestUpload(state.companyId),
+    getSessions(state.companyId).catch(() => []),
   ]);
 
   state.settings  = { ...state.settings, ...settings };
@@ -63,6 +69,7 @@ requireAuth(async (firebaseUser, userDoc) => {
   state.minPrices = minPrices  || [];
   state.prefPrices= prefPrices || [];
   state.svcCodes  = svcCodes   || [];
+  state.sessions  = sessions   || [];
 
   applySettingsToUI();
 
@@ -81,19 +88,30 @@ requireAuth(async (firebaseUser, userDoc) => {
   renderMinPrices();
   renderPrefPrices();
   renderServiceCodes();
+  updateSessionChip();
 
-  // Restore last upload if available
-  if (latestUpload) {
-    state.features    = latestUpload.features;
-    state.cachedCoords= latestUpload.features.map((f, i) => ({
-      lat: f.geometry.coordinates[1],
-      lon: f.geometry.coordinates[0],
-      rowIndex: i,
-    }));
-    state.cachedRawRows = latestUpload.features.map(f => ({ ...f.properties }));
-    setExportEnabled(true);
-    renderProcessedData();
-    renderDashboard();
+  // Auto-restore most recent session if available
+  if (state.sessions.length > 0) {
+    const latest = state.sessions[0];
+    try {
+      const features = await loadSessionFeatures(latest.storageRef);
+      state.features               = features;
+      state.activeSessionId        = latest.id;
+      state.activeSessionName      = latest.name;
+      state.activeSessionStorageRef= latest.storageRef;
+      state.activeFileName         = latest.fileName || '';
+      state.cachedCoords  = features.map((f, i) => ({
+        lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], rowIndex: i,
+      }));
+      state.cachedRawRows = features.map(f => ({ ...f.properties }));
+      setExportEnabled(true);
+      document.getElementById('refresh-nn-btn').disabled = false;
+      updateSessionChip();
+      renderProcessedData();
+      renderDashboard();
+    } catch (e) {
+      console.warn('Could not auto-restore session (Storage may not be enabled):', e);
+    }
   }
 
   initMap();
@@ -277,6 +295,12 @@ window.processFile = async function() {
   const file = state.pendingFile;
   if (!file) { alert('Please select an Excel file first.'); return; }
 
+  // New file = new session context; user will save explicitly
+  state.activeSessionId         = null;
+  state.activeSessionName       = null;
+  state.activeSessionStorageRef = null;
+  state.activeFileName          = file.name;
+
   setProgress(true, 'Reading file…', 5);
 
   let jsonData;
@@ -333,13 +357,10 @@ window.processFile = async function() {
   setProgress(false);
   setExportEnabled(true);
   document.getElementById('refresh-nn-btn').disabled = false;
+  updateSessionChip(); // show Save button; clear any old session name
   plotClusters();
   renderProcessedData();
   renderDashboard();
-
-  // Save to cloud in background — don't block the UI
-  saveUpload(state.companyId, state.userId, file.name, state.features)
-    .catch(e => console.warn('Cloud save skipped (Storage may not be enabled):', e));
 };
 
 // ── REFRESH DRIVE TIMES (ORS re-call only) ──────────────────────
@@ -601,6 +622,182 @@ async function computeNNOSRM(features, onPct) {
   }
   return out;
 }
+
+// ── SESSION MANAGEMENT ───────────────────────────────────────────
+function updateSessionChip() {
+  const chip    = document.getElementById('session-chip');
+  const saveBtn = document.getElementById('btn-save-session');
+  if (!chip || !saveBtn) return;
+  if (state.activeSessionName) {
+    chip.textContent  = state.activeSessionName;
+    chip.style.display = 'inline-block';
+  } else {
+    chip.style.display = 'none';
+  }
+  saveBtn.style.display = state.features.length > 0 ? '' : 'none';
+}
+
+window.openSaveSessionModal = function() {
+  if (!state.features.length) return;
+  const input = document.getElementById('session-name-input');
+  // Pre-fill: current session name, or filename without extension
+  input.value = state.activeSessionName ||
+    state.activeFileName.replace(/\.[^.]+$/, '') || '';
+  document.getElementById('save-session-overlay').classList.add('open');
+  setTimeout(() => { input.focus(); input.select(); }, 60);
+};
+window.closeSaveSessionModal = function() {
+  document.getElementById('save-session-overlay').classList.remove('open');
+};
+
+window.doSaveSession = async function() {
+  const name = document.getElementById('session-name-input').value.trim();
+  if (!name) { document.getElementById('session-name-input').focus(); return; }
+  const saveBtn = document.querySelector('#save-session-modal .btn-primary');
+  saveBtn.textContent = 'Saving…'; saveBtn.disabled = true;
+  try {
+    if (state.activeSessionId && state.activeSessionStorageRef) {
+      await updateSessionData(state.companyId, state.activeSessionId, {
+        name, rowCount: state.features.length,
+        features: state.features, storageRef: state.activeSessionStorageRef,
+      });
+      state.activeSessionName = name;
+    } else {
+      const result = await createSession(state.companyId, state.userId, {
+        name, fileName: state.activeFileName || 'Unknown',
+        rowCount: state.features.length, features: state.features,
+      });
+      state.activeSessionId         = result.id;
+      state.activeSessionName       = name;
+      state.activeSessionStorageRef = result.storageRef;
+    }
+    state.sessions = await getSessions(state.companyId);
+    updateSessionChip();
+    closeSaveSessionModal();
+  } catch (e) {
+    console.error('Save session failed:', e);
+    alert('Save failed — Firebase Storage must be enabled (Blaze plan required).\n\n' + e.message);
+  } finally {
+    saveBtn.textContent = '💾 Save'; saveBtn.disabled = false;
+  }
+};
+
+// Allow pressing Enter in the name field to save
+document.addEventListener('DOMContentLoaded', () => {
+  const inp = document.getElementById('session-name-input');
+  if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') doSaveSession(); });
+});
+
+window.openSessionsModal = async function() {
+  // Refresh list each time modal opens
+  state.sessions = await getSessions(state.companyId).catch(() => state.sessions);
+  renderSessionsList();
+  document.getElementById('sessions-overlay').classList.add('open');
+};
+window.closeSessionsModal = function() {
+  document.getElementById('sessions-overlay').classList.remove('open');
+};
+
+function renderSessionsList() {
+  const body = document.getElementById('sessions-list-body');
+  if (!state.sessions.length) {
+    body.innerHTML = `
+      <div class="no-sessions">
+        <div class="ns-icon">📁</div>
+        <div style="font-weight:600;color:#475569;margin-bottom:6px">No saved sessions yet</div>
+        <div style="font-size:12px">Upload and process a file, then click <strong>💾 Save</strong> to create your first session.</div>
+      </div>`;
+    return;
+  }
+  const rows = state.sessions.map((s, i) => {
+    const ts   = s.updatedAt?.toDate ? s.updatedAt.toDate() : new Date(s.updatedAt?.seconds * 1000 || Date.now());
+    const date = ts.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+    const loaded = s.id === state.activeSessionId;
+    return `<tr${loaded ? ' style="background:#EFF6FF"' : ''}>
+      <td>
+        <div class="sname">${esc(s.name)}${loaded ? ' <span style="color:#3B82F6;font-size:10px;font-weight:700;letter-spacing:.5px">● ACTIVE</span>' : ''}</div>
+        <div class="smeta">${esc(s.fileName || '')} &nbsp;·&nbsp; ${(s.rowCount||0).toLocaleString()} rows</div>
+      </td>
+      <td style="color:#64748B;font-size:12px;white-space:nowrap">${date}</td>
+      <td>
+        <div class="session-actions">
+          ${loaded ? '<button class="btn btn-outline btn-sm" disabled style="color:#94A3B8">Loaded</button>'
+                   : `<button class="btn btn-primary btn-sm" onclick="doLoadSession(${i})">Load</button>`}
+          <button class="btn btn-outline btn-sm" onclick="doRenameSession(${i})">Rename</button>
+          <button class="btn btn-outline btn-sm" style="color:#EF4444;border-color:#FCA5A5" onclick="doDeleteSession(${i})">Delete</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+  body.innerHTML = `
+    <table class="sessions-table">
+      <thead><tr><th>Session</th><th>Last Saved</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+window.doLoadSession = async function(idx) {
+  const session = state.sessions[idx];
+  if (!session) return;
+  // Swap button text while loading
+  const btns = document.querySelectorAll('#sessions-list-body .btn-primary');
+  btns.forEach(b => { b.textContent = 'Loading…'; b.disabled = true; });
+  try {
+    const features = await loadSessionFeatures(session.storageRef);
+    state.features               = features;
+    state.activeSessionId        = session.id;
+    state.activeSessionName      = session.name;
+    state.activeSessionStorageRef= session.storageRef;
+    state.activeFileName         = session.fileName || '';
+    state.cachedCoords  = features.map((f, i) => ({
+      lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], rowIndex: i,
+    }));
+    state.cachedRawRows = features.map(f => ({ ...f.properties }));
+    recalcPricing();
+    setExportEnabled(true);
+    document.getElementById('refresh-nn-btn').disabled = false;
+    updateSessionChip();
+    closeSessionsModal();
+    switchTab('map');
+    plotClusters();
+    renderProcessedData();
+    renderDashboard();
+  } catch (e) {
+    console.error('Load session failed:', e);
+    alert('Could not load session. Firebase Storage must be enabled (Blaze plan required).\n\n' + e.message);
+    renderSessionsList(); // restore button states
+  }
+};
+
+window.doRenameSession = async function(idx) {
+  const session = state.sessions[idx];
+  const newName = prompt('Rename session:', session.name);
+  if (!newName || newName.trim() === session.name) return;
+  try {
+    await renameSession(state.companyId, session.id, newName.trim());
+    state.sessions[idx].name = newName.trim();
+    if (state.activeSessionId === session.id) {
+      state.activeSessionName = newName.trim();
+      updateSessionChip();
+    }
+    renderSessionsList();
+  } catch (e) { alert('Rename failed: ' + e.message); }
+};
+
+window.doDeleteSession = async function(idx) {
+  const session = state.sessions[idx];
+  if (!confirm(`Delete "${session.name}"? This cannot be undone.`)) return;
+  try {
+    await deleteSession(state.companyId, session.id, session.storageRef);
+    state.sessions.splice(idx, 1);
+    if (state.activeSessionId === session.id) {
+      state.activeSessionId = null; state.activeSessionName = null;
+      state.activeSessionStorageRef = null;
+      updateSessionChip();
+    }
+    renderSessionsList();
+  } catch (e) { alert('Delete failed: ' + e.message); }
+};
 
 // ── PRICING ENGINE ────────────────────────────────────────────────
 function getContainerSize(svcCode) {

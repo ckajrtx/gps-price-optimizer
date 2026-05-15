@@ -126,6 +126,29 @@
     /* ── SERVICE CODES TAB ── */
     .svc-badge { display:inline-block; background:#F1F5F9; padding:2px 7px; border-radius:4px; font-size:11px; font-family:monospace; color:#475569; }
 
+    /* ── SESSION CHIP ── */
+    .session-chip { background:#EDE9FE; color:#5B21B6; border-radius:4px; padding:3px 9px; font-size:11px; font-weight:600; white-space:nowrap; max-width:200px; overflow:hidden; text-overflow:ellipsis; cursor:default; flex-shrink:0; }
+
+    /* ── SESSION MODALS ── */
+    #sessions-overlay, #save-session-overlay { display:none; position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:9000; align-items:center; justify-content:center; }
+    #sessions-overlay.open, #save-session-overlay.open { display:flex; }
+    #sessions-modal { background:#fff; border-radius:12px; box-shadow:var(--shadow-lg); width:min(780px,94vw); max-height:82vh; display:flex; flex-direction:column; overflow:hidden; }
+    #save-session-modal { background:#fff; border-radius:12px; box-shadow:var(--shadow-lg); width:min(440px,94vw); overflow:hidden; }
+    .sm-hdr { display:flex; align-items:center; justify-content:space-between; padding:18px 20px 14px; border-bottom:1px solid #E2E8F0; }
+    .sm-hdr h2 { font-size:16px; font-weight:700; color:#1E293B; margin:0; }
+    .sm-body { padding:20px; overflow-y:auto; }
+    .sessions-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .sessions-table th { background:#F8FAFC; padding:9px 12px; text-align:left; font-weight:600; color:#475569; border-bottom:2px solid #E2E8F0; font-size:11px; text-transform:uppercase; letter-spacing:.5px; }
+    .sessions-table td { padding:10px 12px; border-bottom:1px solid #F1F5F9; vertical-align:middle; }
+    .sessions-table tr:hover td { background:#F8FAFC; }
+    .sname { font-weight:600; color:#1E293B; }
+    .smeta { font-size:11px; color:#94A3B8; margin-top:2px; }
+    .session-actions { display:flex; gap:6px; }
+    .no-sessions { text-align:center; padding:48px 20px; color:#94A3B8; }
+    .no-sessions .ns-icon { font-size:40px; margin-bottom:12px; }
+    .form-input { width:100%; padding:8px 10px; border:1px solid #CBD5E1; border-radius:6px; font-size:13px; font-family:inherit; box-sizing:border-box; }
+    .form-input:focus { outline:2px solid var(--blue); outline-offset:-1px; }
+
     /* ── PDF PRINT AREA ── */
     #pdf-area { position:fixed; left:-9999px; top:0; width:900px; background:#fff; padding:40px; font-family:'Inter',sans-serif; font-size:13px; color:#1E293B; }
     .pdf-title { font-size:22px; font-weight:700; margin-bottom:4px; }
@@ -170,6 +193,7 @@
   <div id="top-bar">
     <div class="app-brand">Quote<span>IQ</span></div>
     <div id="company-chip" class="company-chip" style="display:none"></div>
+    <div id="session-chip" class="session-chip" style="display:none" title="Active session"></div>
     <div class="tabs">
       <button class="tab-btn active" data-tab="map">Map</button>
       <button class="tab-btn" data-tab="dashboard">Dashboard</button>
@@ -180,6 +204,8 @@
       <button class="tab-btn" data-tab="svcodes">Service Codes</button>
     </div>
     <div class="top-bar-right">
+      <button id="btn-save-session" class="btn btn-primary btn-sm" onclick="openSaveSessionModal()" style="display:none">💾 Save</button>
+      <button class="btn btn-outline btn-sm" onclick="openSessionsModal()">📂 Sessions</button>
       <button id="btn-help" onclick="openHelp()" title="Help">?</button>
       <div class="user-menu" id="user-menu-btn">
         <div class="avatar" id="user-avatar">?</div>
@@ -426,14 +452,41 @@
           <div class="hp"><span class="hp-name">ORS API Key</span><span class="hp-desc">Optional key from openrouteservice.org. Leave blank to use OSRM (free road routing, no key required). Enter a key to use ORS instead.</span></div>
         </div>
         <div class="help-sec">
-          <h3>Service Code → Container Size Fallback Patterns</h3>
-          <table class="help-table"><thead><tr><th>Pattern</th><th>Container Size</th></tr></thead><tbody>
-            <tr><td><code>F2Y…</code>, <code>R2Y…</code></td><td>2 yd</td></tr>
-            <tr><td><code>F{n}Y…</code>, <code>R{n}Y…</code></td><td><em>n</em> yd</td></tr>
-            <tr><td><code>RESCRT…</code>, <code>ADDCART…</code></td><td>0.5 yd</td></tr>
-            <tr><td>Anything else</td><td>0.5 yd (default)</td></tr>
-          </tbody></table>
+          <h3>Service Code → Container Size</h3>
+          <p style="font-size:12px;color:#475569;margin:0">Container size must be entered manually in the <strong>Service Codes</strong> tab. When a file is uploaded and the table is empty, all service codes are auto-detected and listed — fill in the Container Size (yd) for each. Rows with a missing size are highlighted in red and will not receive Comp Area, Min Price, or Preferred Price lookups until filled in.</p>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SAVE SESSION MODAL -->
+  <div id="save-session-overlay" onclick="if(event.target===this)closeSaveSessionModal()">
+    <div id="save-session-modal">
+      <div class="sm-hdr">
+        <h2>💾 Save Session</h2>
+        <button class="modal-close" onclick="closeSaveSessionModal()">×</button>
+      </div>
+      <div class="sm-body">
+        <p style="font-size:13px;color:#475569;margin:0 0 16px">Name this analysis so you can reload it later without re-uploading your file.</p>
+        <label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:6px">Session Name</label>
+        <input id="session-name-input" type="text" class="form-input" placeholder="e.g. Q1 2025 West Region" style="margin-bottom:18px">
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-outline" onclick="closeSaveSessionModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="doSaveSession()">💾 Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SESSIONS LIST MODAL -->
+  <div id="sessions-overlay" onclick="if(event.target===this)closeSessionsModal()">
+    <div id="sessions-modal">
+      <div class="sm-hdr">
+        <h2>📂 Sessions</h2>
+        <button class="modal-close" onclick="closeSessionsModal()">×</button>
+      </div>
+      <div class="sm-body">
+        <div id="sessions-list-body"></div>
       </div>
     </div>
   </div>

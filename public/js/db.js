@@ -166,3 +166,49 @@ export async function getLatestUpload(companyId) {
   const features = await resp.json();
   return { meta, features };
 }
+
+// ══════════════════════════════════════════════════════
+// SESSIONS (named, user-selectable)
+// ══════════════════════════════════════════════════════
+export async function getSessions(companyId) {
+  const q = query(
+    collection(db, 'companies', companyId, 'sessions'),
+    orderBy('updatedAt', 'desc')
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+export async function createSession(companyId, uid, { name, fileName, rowCount, features }) {
+  const sRef = `sessions/${companyId}/${Date.now()}.json`;
+  await uploadString(ref(storage, sRef), JSON.stringify(features), 'raw',
+    { contentType: 'application/json' });
+  const docRef = await addDoc(collection(db, 'companies', companyId, 'sessions'), {
+    name, fileName, rowCount, storageRef: sRef,
+    createdAt: serverTimestamp(), updatedAt: serverTimestamp(), createdBy: uid,
+  });
+  return { id: docRef.id, storageRef: sRef };
+}
+
+export async function updateSessionData(companyId, sessionId, { name, rowCount, features, storageRef }) {
+  await uploadString(ref(storage, storageRef), JSON.stringify(features), 'raw',
+    { contentType: 'application/json' });
+  await updateDoc(doc(db, 'companies', companyId, 'sessions', sessionId),
+    { name, rowCount, updatedAt: serverTimestamp() });
+}
+
+export async function renameSession(companyId, sessionId, newName) {
+  await updateDoc(doc(db, 'companies', companyId, 'sessions', sessionId),
+    { name: newName, updatedAt: serverTimestamp() });
+}
+
+export async function deleteSession(companyId, sessionId, storageRef) {
+  await deleteDoc(doc(db, 'companies', companyId, 'sessions', sessionId));
+  try { await deleteObject(ref(storage, storageRef)); } catch (_) {}
+}
+
+export async function loadSessionFeatures(storageRef) {
+  const url = await getDownloadURL(ref(storage, storageRef));
+  const resp = await fetch(url);
+  return resp.json();
+}
