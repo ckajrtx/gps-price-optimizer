@@ -604,16 +604,11 @@ async function computeNNOSRM(features, onPct) {
 
 // ── PRICING ENGINE ────────────────────────────────────────────────
 function getContainerSize(svcCode) {
-  if (!svcCode) return 0.5;
-  const code = String(svcCode).toUpperCase().trim();
-  // Check service code table first
+  if (!svcCode) return null;
+  const code  = String(svcCode).toUpperCase().trim();
   const entry = state.svcCodes.find(r => r.svcCode && r.svcCode.toUpperCase() === code);
-  if (entry && entry.contSize) return parseFloat(entry.contSize);
-  // Regex fallback
-  const m = code.match(/^[FR](\d+(\.\d+)?)Y/);
-  if (m) return parseFloat(m[1]);
-  if (/^RES(CRT|CART)/i.test(code) || /^ADDCART/i.test(code)) return 0.5;
-  return 0.5;
+  if (entry && entry.contSize !== '' && entry.contSize != null) return parseFloat(entry.contSize);
+  return null; // not in table — user must fill in the Service Codes tab
 }
 
 function lookupCompPrice(clusterNum, contSize) {
@@ -757,7 +752,9 @@ function renderProcessedData() {
       let v = p[c.key];
       if (v === null || v === undefined || v === '') v = '';
       let cell = '';
-      if (c.key === 'cluster') {
+      if (c.key === 'contSize') {
+        cell = (v !== '' && v != null) ? v : `<span style="color:#EF4444;font-weight:600" title="Set container size in the Service Codes tab">—</span>`;
+      } else if (c.key === 'cluster') {
         const n = v ?? -1;
         cell = n >= 0 ? `<span class="badge badge-blue">${n}</span>` : `<span class="badge" style="background:#F1F5F9;color:#64748B">noise</span>`;
       } else if (c.key === 'pctChange') {
@@ -948,13 +945,16 @@ function renderServiceCodes() {
     tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#94A3B8;padding:16px">No service codes yet — upload a file to auto-populate, or add manually.</td></tr>';
     return;
   }
-  tbody.innerHTML = state.svcCodes.map((row, i) => `
+  tbody.innerHTML = state.svcCodes.map((row, i) => {
+    const missingSize = row.contSize === '' || row.contSize == null;
+    return `
     <tr>
       <td><span class="svc-badge">${esc(row.svcCode || '')}</span></td>
-      <td><input class="td-input" type="number" step="0.5" value="${row.contSize||''}" onchange="updateSvcRow(${i},'contSize',this.value)" placeholder="e.g. 2"></td>
+      <td><input class="td-input${missingSize ? ' input-required' : ''}" type="number" step="0.5" value="${row.contSize||''}" onchange="updateSvcRow(${i},'contSize',this.value)" placeholder="Required"></td>
       <td><input class="td-input" value="${esc(row.description||'')}" onchange="updateSvcRow(${i},'description',this.value)" placeholder="Optional description"></td>
       <td><button class="btn-icon btn-icon-danger" onclick="deleteSvcRow(${i})">×</button></td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
 
 window.addSvcRow = function() {
@@ -978,6 +978,7 @@ window.deleteSvcRow = function(i) {
 };
 window.updateSvcRow = function(i, field, val) {
   if (state.svcCodes[i]) state.svcCodes[i][field] = val;
+  if (field === 'contSize') { renderServiceCodes(); if (state.features.length) { recalcPricing(); renderProcessedData(); renderDashboard(); } }
   scheduleAutoSave('svcCodes');
 };
 
@@ -995,7 +996,7 @@ async function autoPopulateSvcCodes(jsonData) {
     const code = (row['Svc_Code_Alpha'] || '').trim();
     if (code && !seen.has(code)) {
       seen.add(code);
-      codes.push({ svcCode: code, contSize: guessContSize(code), description: '' });
+      codes.push({ svcCode: code, contSize: '', description: '' });
     }
   });
   state.svcCodes = codes;
@@ -1003,12 +1004,6 @@ async function autoPopulateSvcCodes(jsonData) {
   await saveServiceCodes(state.companyId, codes);
 }
 
-function guessContSize(code) {
-  const m = String(code).toUpperCase().match(/^[FR](\d+(\.\d+)?)Y/);
-  if (m) return parseFloat(m[1]);
-  if (/^RES(CRT|CART)/i.test(code) || /^ADDCART/i.test(code)) return 0.5;
-  return '';
-}
 
 // ── AUTO SAVE ─────────────────────────────────────────────────────
 function scheduleAutoSave(type) {

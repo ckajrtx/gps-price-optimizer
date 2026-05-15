@@ -220,6 +220,9 @@ input.td-input {
   background:var(--blue-light); color:var(--slate-800);
 }
 input.td-input:focus { outline:2px solid var(--blue); outline-offset:-1px; }
+input.td-input.input-required { border-color:#FCA5A5; background:#FEF2F2; }
+input.td-input.input-required:focus { outline-color:#EF4444; }
+input.td-input.input-required::placeholder { color:#EF4444; opacity:.8; }
 
 /* ── ICON BUTTONS (delete rows etc.) ── */
 .btn-icon {
