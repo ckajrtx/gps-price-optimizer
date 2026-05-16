@@ -922,7 +922,7 @@ function calcRowPricing(props) {
   const poundsPerYard = getPoundsPerYard(svcCode);
   const laborCost = +((Math.max(dist, s.minServiceTime) + ((mult - 1) * s.additionalTimePerContainer)) / 60 * 4.33 * s.costPerHour).toFixed(2);
   const disposalCost = (contSize !== null && poundsPerYard !== null)
-    ? +(contSize * poundsPerYard / 2000 * s.disposalPerTon * 4.33).toFixed(2)
+    ? +(mult * contSize * poundsPerYard / 2000 * s.disposalPerTon * 4.33).toFixed(2)
     : 0;
   const totalAmount = parseFloat(props['TotalAmount']) || 0;
   const currentEbitdaPct = totalAmount ? +((totalAmount - laborCost - disposalCost) / totalAmount * 100).toFixed(1) : '';
