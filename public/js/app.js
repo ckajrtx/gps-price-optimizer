@@ -889,11 +889,12 @@ function calcRowPricing(props) {
   const minPrice   = lookupMinPrice(contSize);
   let   prefPrice  = lookupPrefPrice(contSize) || 0;
 
-  // Outlier surcharge applies whenever road distance exceeds epsilon,
-  // including in-cluster accounts (clustering uses straight-line; dist uses road miles).
-  let prefAdj = prefPrice + Math.max(0, dist - s.epsilon) * s.extraChargePerMile;
-  if (mult > 1) prefAdj = (prefAdj * (mult - 1) * (1 - s.quantityDiscount) + prefAdj) / mult;
-  prefAdj = +prefAdj.toFixed(2);
+  // Adj Min Price: if road dist < epsilon use min price as-is; else add distance-based labor
+  const adjMinPrice = minPrice !== null
+    ? (dist < s.epsilon
+        ? +minPrice.toFixed(2)
+        : +(minPrice + dist * s.costPerHour / 60).toFixed(2))
+    : 0;
 
   let ceiling = prefPrice * (1 + s.prefBuffer);
   ceiling += Math.max(0, dist - s.epsilon) * s.extraChargePerMile;
@@ -931,8 +932,7 @@ function calcRowPricing(props) {
     piPrice,
     priceMatch: priceMatch !== null ? priceMatch : '',
     minPrice:   minPrice   !== null ? minPrice   : '',
-    prefPrice:  prefAdj,
-    prefPriceAdj: prefAdj,
+    adjMinPrice,
     ceiling,
     newRate,
     newTotal,
@@ -967,7 +967,7 @@ const PROC_COLS = [
   { key: 'piPrice',            label: "PI'd Price",       type: '$',  calc: true },
   { key: 'priceMatch',         label: 'Price Match',      type: '$',  calc: true },
   { key: 'minPrice',           label: 'Min Price',        type: '$',  calc: true },
-  { key: 'prefPriceAdj',       label: 'Pref Price Adj',   type: '$',  calc: true },
+  { key: 'adjMinPrice',        label: 'Adj Min Price',    type: '$',  calc: true },
   { key: 'ceiling',            label: 'Ceiling',          type: '$',  calc: true },
   { key: 'newRate',            label: 'New Rate',         type: '$',  calc: true },
   { key: 'newTotal',           label: 'New Total',        type: '$',  calc: true },
