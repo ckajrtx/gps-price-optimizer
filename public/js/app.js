@@ -990,7 +990,7 @@ function renderProcessedData() {
     rows = [...rows].sort((a, b) => {
       let va = a[state.sortCol] ?? '';
       let vb = b[state.sortCol] ?? '';
-      if (col && (col.type === 'num' || col.type === '$' || col.type === 'pct')) {
+      if (col && (col.type === 'num' || col.type === '$' || col.type === 'pct' || col.type === 'ebitda%')) {
         va = parseFloat(va) || 0;
         vb = parseFloat(vb) || 0;
         return state.sortDir === 'asc' ? va - vb : vb - va;
