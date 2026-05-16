@@ -883,9 +883,7 @@ function calcRowPricing(props) {
   const dist       = parseFloat(props['distance_to_nearest']) || 0;
   const clusterNum = props['cluster'] ?? -1;
 
-  let piPrice = current * (1 + s.priceIncreaseRate);
-  piPrice += Math.max(0, dist - s.epsilon) * s.extraChargePerMile;
-  piPrice = +piPrice.toFixed(2);
+  const piPrice = +(current * (1 + s.priceIncreaseRate)).toFixed(2);
 
   const priceMatch = lookupCompPrice(clusterNum, contSize);
   const minPrice   = lookupMinPrice(contSize);
