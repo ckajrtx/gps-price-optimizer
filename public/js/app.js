@@ -991,9 +991,9 @@ const PROC_COLS = [
     tip: 'Estimated monthly labor cost for this stop.\n\nFormula: (max(dist, Min Service Time) + (Qty − 1) × Addl Time/Container) ÷ 60 × 4.33 × Cost/Hr\n\nUses road distance as a proxy for drive time in minutes.' },
   { key: 'disposalCost',       label: 'Disposal Cost',     type: '$',      calc: true,
     tip: 'Estimated monthly disposal cost for this service line.\n\nFormula: Qty × Container Size × Lbs/Yd ÷ 2,000 × Disposal $/Ton × 4.33\n\nRequires Lbs/Yd to be filled in the Service Codes tab. Shows $0 if blank.' },
-  { key: 'currentEbitdaPct',   label: 'Current EBITDA %',  type: 'ebitda%',calc: true,
+  { key: 'currentEbitdaPct',   label: 'Current EBITDA %',  type: 'ebitda%',calc: true, tipLeft: true,
     tip: 'Estimated EBITDA margin at the current billing total.\n\nFormula: (Total Amount − Labor Cost − Disposal Cost) ÷ Total Amount × 100' },
-  { key: 'newEbitdaPct',       label: 'New EBITDA %',       type: 'ebitda%',calc: true,
+  { key: 'newEbitdaPct',       label: 'New EBITDA %',       type: 'ebitda%',calc: true, tipLeft: true,
     tip: 'Estimated EBITDA margin at the projected new billing total.\n\nFormula: (New Total − Labor Cost − Disposal Cost) ÷ New Total × 100' },
 ];
 
@@ -1027,7 +1027,7 @@ function renderProcessedData() {
     const icon   = !isSort || state.sortDir === 'none' ? '↕' : state.sortDir === 'asc' ? '↑' : '↓';
     const cls    = c.calc ? 'class="calc-col"' : '';
     const tipHTML = c.tip
-      ? `<span class="tooltip-wrap" onclick="event.stopPropagation()" style="vertical-align:middle;margin-left:3px"><span class="ti">ⓘ</span><span class="tip" style="width:260px;white-space:pre-line">${c.tip}</span></span>`
+      ? `<span class="tooltip-wrap" onclick="event.stopPropagation()" style="vertical-align:middle;margin-left:3px"><span class="ti">ⓘ</span><span class="tip" style="width:260px;white-space:pre-line;${c.tipLeft ? 'left:auto;right:0' : ''}">${c.tip}</span></span>`
       : '';
     return `<th ${cls} data-col="${c.key}" style="cursor:pointer;white-space:nowrap;user-select:none">${c.label}${tipHTML} <span class="sort-icon" style="opacity:${isSort&&state.sortDir!=='none'?1:.35}">${icon}</span></th>`;
   }).join('');
