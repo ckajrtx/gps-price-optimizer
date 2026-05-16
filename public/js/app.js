@@ -915,13 +915,16 @@ function calcRowPricing(props) {
   const dollarChange = +(newRate - current).toFixed(2);
   const pctChange    = current ? +((dollarChange / current) * 100).toFixed(1) : 0;
 
+  const newTotal = +(mult * newRate).toFixed(2);
+
   const poundsPerYard = getPoundsPerYard(svcCode);
   const laborCost = +((Math.max(dist, s.minServiceTime) + ((mult - 1) * s.additionalTimePerContainer)) / 60 * 4.33 * s.costPerHour).toFixed(2);
   const disposalCost = (contSize !== null && poundsPerYard !== null)
     ? +(contSize * poundsPerYard / 2000 * s.disposalPerTon * 4.33).toFixed(2)
     : 0;
-  const currentEbitdaPct = current ? +((current - laborCost - disposalCost) / current * 100).toFixed(1) : '';
-  const newEbitdaPct     = newRate  ? +((newRate  - laborCost - disposalCost) / newRate  * 100).toFixed(1) : '';
+  const totalAmount = parseFloat(props['TotalAmount']) || 0;
+  const currentEbitdaPct = totalAmount ? +((totalAmount - laborCost - disposalCost) / totalAmount * 100).toFixed(1) : '';
+  const newEbitdaPct     = newTotal    ? +((newTotal    - laborCost - disposalCost) / newTotal    * 100).toFixed(1) : '';
 
   return {
     contSize,
@@ -932,6 +935,7 @@ function calcRowPricing(props) {
     prefPriceAdj: prefAdj,
     ceiling,
     newRate,
+    newTotal,
     dollarChange,
     pctChange,
     laborCost,
@@ -966,6 +970,7 @@ const PROC_COLS = [
   { key: 'prefPriceAdj',       label: 'Pref Price Adj',   type: '$',  calc: true },
   { key: 'ceiling',            label: 'Ceiling',          type: '$',  calc: true },
   { key: 'newRate',            label: 'New Rate',         type: '$',  calc: true },
+  { key: 'newTotal',           label: 'New Total',        type: '$',  calc: true },
   { key: 'dollarChange',       label: '$ Change',         type: '$',      calc: true },
   { key: 'pctChange',          label: '% Change',         type: 'pct',    calc: true },
   { key: 'laborCost',          label: 'Labor Cost',        type: '$',      calc: true },
