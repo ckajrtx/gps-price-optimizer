@@ -361,17 +361,9 @@
     <div id="tab-minprice" class="tab-panel">
       <div class="content-panel">
         <div class="ph"><h2>Min Base Price</h2><div class="ph-actions"><button class="btn btn-primary btn-sm" onclick="addMinRow()">+ Add Row</button></div></div>
-        <div class="two-col">
-          <div class="table-wrap" style="overflow-x:auto">
-            <table class="data-table"><thead><tr><th>Cont Size (yd)</th><th class="col-r">Min Base Price ($)</th><th class="col-r">Price / Yard</th><th></th></tr></thead>
-            <tbody id="min-tbody"></tbody></table>
-          </div>
-          <div class="side-card">
-            <h4>Discount Parameters</h4>
-            <div class="side-field"><label>Container Size Discount Rate</label><input type="text" id="min-discount-rate" value="0.0525" onchange="renderMinPrices()"></div>
-            <div class="side-field"><label>Starting $ per Yard</label><input type="text" id="min-start-pyard" value="17.60" onchange="renderMinPrices()"></div>
-            <p class="side-note">Lowest price you would accept. Overrides a competitor's price if it falls below this minimum.</p>
-          </div>
+        <div class="table-wrap" style="overflow-x:auto">
+          <table class="data-table"><thead><tr><th>Cont Size (yd)</th><th class="col-r">Min Base Price ($)</th><th class="col-r">Price / Yard</th><th></th></tr></thead>
+          <tbody id="min-tbody"></tbody></table>
         </div>
       </div>
     </div>
