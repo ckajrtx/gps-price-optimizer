@@ -39,8 +39,8 @@ A multi-tenant SaaS web application that helps waste & recycling service compani
 | **PI'd Price** | `Current Amount × (1 + PI Rate)` |
 | **Price Match** | Comp Area price for this cluster + container size (if found) |
 | **Min Price** | Minimum base price for this container size |
-| **Pref Price Adj** | Preferred price adjusted for quantity discount and outlier surcharge |
-| **Ceiling** | `Preferred Price × (1 + Pref Buffer)` |
+| **Pref Price Adj** | Preferred price + outlier surcharge, then blended for quantity: `(prefAdj × (Mult−1) × (1−Discount) + prefAdj) / Mult` |
+| **Ceiling** | Hard cap based on the raw Preferred Price lookup: `Preferred Price × (1 + Pref Buffer)` — independent of surcharge or quantity adjustments |
 | **New Rate** | `max(Min Price, min(Ceiling, max(PI'd Price, Price Match)))` |
 | **$ Change** | `New Rate − Current Amount` |
 | **% Change** | `$ Change / Current Amount × 100` |
