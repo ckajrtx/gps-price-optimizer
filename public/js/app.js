@@ -904,12 +904,12 @@ function calcRowPricing(props) {
 
   let newRate;
   if (priceMatch !== null && current > priceMatch) {
-    // Hold — customer already beating competitor, but still enforce min price floor
-    newRate = minPrice !== null ? Math.max(current, minPrice) : current;
+    // Hold — customer already beating competitor, but still enforce adj min price floor
+    newRate = minPrice !== null ? Math.max(current, adjMinPrice) : current;
   } else {
     let candidate = piPrice;
     if (priceMatch !== null) candidate = Math.max(candidate, priceMatch);
-    if (minPrice   !== null) candidate = Math.max(candidate, minPrice);
+    if (minPrice   !== null) candidate = Math.max(candidate, adjMinPrice);
     newRate = Math.min(candidate, ceiling || candidate);
   }
   newRate = +newRate.toFixed(2);
