@@ -889,11 +889,12 @@ function calcRowPricing(props) {
   const minPrice   = lookupMinPrice(contSize);
   let   prefPrice  = lookupPrefPrice(contSize) || 0;
 
-  // Adj Min Price: if road dist < epsilon use min price as-is; else add distance-based labor
+  // Adj Min Price: if road dist <= epsilon use min price as-is;
+  // else add monthly cost for distance beyond epsilon
   const adjMinPrice = minPrice !== null
-    ? (dist < s.epsilon
+    ? (dist <= s.epsilon
         ? +minPrice.toFixed(2)
-        : +(minPrice + dist * s.costPerHour / 60).toFixed(2))
+        : +(minPrice + (dist - s.epsilon) * s.costPerHour / 60 * 4.33).toFixed(2))
     : 0;
 
   let ceiling = prefPrice * (1 + s.prefBuffer);
