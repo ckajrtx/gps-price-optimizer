@@ -961,23 +961,40 @@ const PROC_COLS = [
   { key: 'Amount',             label: 'Current Price',    type: '$'   },
   { key: 'Mult',               label: 'Qty',              type: 'num' },
   { key: 'TotalAmount',        label: 'Total Amount',     type: '$'   },
-  { key: 'cluster',            label: 'Cluster #',        type: 'num' },
-  { key: 'dbscan',             label: 'Type',             type: 'str' },
-  { key: 'nearest_point',      label: 'Nearest Acct',     type: 'str' },
-  { key: 'distance_to_nearest',label: 'Dist (mi, road)',  type: 'num' },
-  { key: 'piPrice',            label: "PI'd Price",       type: '$',  calc: true },
-  { key: 'priceMatch',         label: 'Price Match',      type: '$',  calc: true },
-  { key: 'minPrice',           label: 'Min Price',        type: '$',  calc: true },
-  { key: 'adjMinPrice',        label: 'Adj Min Price',    type: '$',  calc: true },
-  { key: 'ceiling',            label: 'Ceiling',          type: '$',  calc: true },
-  { key: 'newRate',            label: 'New Rate',         type: '$',  calc: true },
-  { key: 'newTotal',           label: 'New Total',        type: '$',  calc: true },
-  { key: 'dollarChange',       label: '$ Change',         type: '$',      calc: true },
-  { key: 'pctChange',          label: '% Change',         type: 'pct',    calc: true },
-  { key: 'laborCost',          label: 'Labor Cost',        type: '$',      calc: true },
-  { key: 'disposalCost',       label: 'Disposal Cost',     type: '$',      calc: true },
-  { key: 'currentEbitdaPct',   label: 'Current EBITDA %',  type: 'ebitda%',calc: true },
-  { key: 'newEbitdaPct',       label: 'New EBITDA %',       type: 'ebitda%',calc: true },
+  { key: 'cluster',            label: 'Cluster #',        type: 'num',
+    tip: 'DBSCAN cluster assignment. Accounts in the same cluster are geographically close (within Epsilon miles straight-line). "noise" = isolated account with no nearby neighbors.' },
+  { key: 'dbscan',             label: 'Type',             type: 'str',
+    tip: 'DBSCAN classification: "core" = dense cluster center, "edge" = on the boundary of a cluster, "noise" = isolated, not part of any cluster.' },
+  { key: 'nearest_point',      label: 'Nearest Acct',     type: 'str',
+    tip: 'Account number of the nearest neighboring account, measured by road driving distance via OSRM.' },
+  { key: 'distance_to_nearest',label: 'Dist (mi, road)',  type: 'num',
+    tip: 'Driving distance in miles to the nearest neighboring account, calculated via OSRM road routing. Note: clustering uses straight-line distance, so this road value may exceed Epsilon even for clustered accounts.' },
+  { key: 'piPrice',            label: "PI'd Price",       type: '$',  calc: true,
+    tip: "Price Increase applied to current rate.\n\nFormula: Current Price × (1 + PI Rate)" },
+  { key: 'priceMatch',         label: 'Price Match',      type: '$',  calc: true,
+    tip: "Competitor's price for this account's cluster and container size, pulled from the Comp Areas table. Blank if no match is found for this cluster + container size combination." },
+  { key: 'minPrice',           label: 'Min Price',        type: '$',  calc: true,
+    tip: 'Minimum base price for this container size from the Min Base Price table. Used as the input to Adj Min Price — not applied directly as a floor.' },
+  { key: 'adjMinPrice',        label: 'Adj Min Price',    type: '$',  calc: true,
+    tip: 'Adjusted minimum price floor, accounting for road distance.\n\nIf dist ≤ Epsilon: Min Price\nIf dist > Epsilon: Min Price + ((dist − Epsilon) × Cost/Hr ÷ 60 × 4.33)\n\nThe overage beyond Epsilon is converted to a monthly labor cost and added to the floor.' },
+  { key: 'ceiling',            label: 'Ceiling',          type: '$',  calc: true,
+    tip: 'Maximum allowable price for this service line.\n\nFormula: Preferred Price × (1 + Pref Buffer)\n\nAlso adjusted for outlier surcharge and quantity. New Rate will never exceed this value.' },
+  { key: 'newRate',            label: 'New Rate',         type: '$',  calc: true,
+    tip: 'Final recommended per-unit rate.\n\nFormula: max(PI\'d Price, Price Match, Adj Min Price), capped at Ceiling.\n\nHold exception: if current price already exceeds Price Match, rate is held at current (or Adj Min Price if higher).' },
+  { key: 'newTotal',           label: 'New Total',        type: '$',  calc: true,
+    tip: 'Projected monthly billing total for this service line.\n\nFormula: New Rate × Qty' },
+  { key: 'dollarChange',       label: '$ Change',         type: '$',      calc: true,
+    tip: 'Dollar difference between the new and current per-unit rate.\n\nFormula: New Rate − Current Price' },
+  { key: 'pctChange',          label: '% Change',         type: 'pct',    calc: true,
+    tip: 'Percentage change from current price to new rate.\n\nFormula: (New Rate − Current Price) ÷ Current Price × 100' },
+  { key: 'laborCost',          label: 'Labor Cost',        type: '$',      calc: true,
+    tip: 'Estimated monthly labor cost for this stop.\n\nFormula: (max(dist, Min Service Time) + (Qty − 1) × Addl Time/Container) ÷ 60 × 4.33 × Cost/Hr\n\nUses road distance as a proxy for drive time in minutes.' },
+  { key: 'disposalCost',       label: 'Disposal Cost',     type: '$',      calc: true,
+    tip: 'Estimated monthly disposal cost for this service line.\n\nFormula: Qty × Container Size × Lbs/Yd ÷ 2,000 × Disposal $/Ton × 4.33\n\nRequires Lbs/Yd to be filled in the Service Codes tab. Shows $0 if blank.' },
+  { key: 'currentEbitdaPct',   label: 'Current EBITDA %',  type: 'ebitda%',calc: true,
+    tip: 'Estimated EBITDA margin at the current billing total.\n\nFormula: (Total Amount − Labor Cost − Disposal Cost) ÷ Total Amount × 100' },
+  { key: 'newEbitdaPct',       label: 'New EBITDA %',       type: 'ebitda%',calc: true,
+    tip: 'Estimated EBITDA margin at the projected new billing total.\n\nFormula: (New Total − Labor Cost − Disposal Cost) ÷ New Total × 100' },
 ];
 
 function renderProcessedData() {
@@ -1009,7 +1026,10 @@ function renderProcessedData() {
     const isSort = state.sortCol === c.key;
     const icon   = !isSort || state.sortDir === 'none' ? '↕' : state.sortDir === 'asc' ? '↑' : '↓';
     const cls    = c.calc ? 'class="calc-col"' : '';
-    return `<th ${cls} data-col="${c.key}" style="cursor:pointer;white-space:nowrap;user-select:none">${c.label} <span class="sort-icon" style="opacity:${isSort&&state.sortDir!=='none'?1:.35}">${icon}</span></th>`;
+    const tipHTML = c.tip
+      ? `<span class="tooltip-wrap" onclick="event.stopPropagation()" style="vertical-align:middle;margin-left:3px"><span class="ti">ⓘ</span><span class="tip" style="width:260px;white-space:pre-line">${c.tip}</span></span>`
+      : '';
+    return `<th ${cls} data-col="${c.key}" style="cursor:pointer;white-space:nowrap;user-select:none">${c.label}${tipHTML} <span class="sort-icon" style="opacity:${isSort&&state.sortDir!=='none'?1:.35}">${icon}</span></th>`;
   }).join('');
 
   const tdHTML = rows.map(p => {
