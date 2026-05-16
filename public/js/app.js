@@ -34,7 +34,8 @@ const state = {
   settings: {
     epsilon: 3, minPoints: 5,
     quantityDiscount: 0.30, extraChargePerMile: 15,
-    priceIncreaseRate: 0.10, prefBuffer: 0.40, orsKey: ''
+    priceIncreaseRate: 0.10, prefBuffer: 0.40, orsKey: '',
+    costPerHour: 0, disposalPerTon: 0, minServiceTime: 0, additionalTimePerContainer: 0
   },
   sortCol: null,
   sortDir: 'none',
@@ -168,7 +169,11 @@ function applySettingsToUI() {
   document.getElementById('s-extra-mile').value= s.extraChargePerMile;
   document.getElementById('s-pi-rate').value   = pct(s.priceIncreaseRate);
   document.getElementById('s-pref-buf').value  = pct(s.prefBuffer);
-  document.getElementById('s-ors-key').value   = s.orsKey || '';
+  document.getElementById('s-ors-key').value               = s.orsKey || '';
+  document.getElementById('s-cost-per-hour').value         = s.costPerHour ?? 0;
+  document.getElementById('s-disposal-per-ton').value        = s.disposalPerTon ?? 0;
+  document.getElementById('s-min-service-time').value        = s.minServiceTime ?? 0;
+  document.getElementById('s-addl-time-per-container').value = s.additionalTimePerContainer ?? 0;
   document.getElementById('clusterRadius').value = s.epsilon;
   document.getElementById('minPoints').value     = s.minPoints;
 }
@@ -186,8 +191,12 @@ window.onSettingsChange = function() {
   state.settings.extraChargePerMile= parseFloat(document.getElementById('s-extra-mile').value) || 15;
   state.settings.priceIncreaseRate = parsePct(document.getElementById('s-pi-rate').value);
   state.settings.prefBuffer        = parsePct(document.getElementById('s-pref-buf').value);
-  state.settings.orsKey            = document.getElementById('s-ors-key').value.trim();
-  state.settings.epsilon           = parseFloat(document.getElementById('clusterRadius').value) || 3;
+  state.settings.orsKey                    = document.getElementById('s-ors-key').value.trim();
+  state.settings.costPerHour               = parseFloat(document.getElementById('s-cost-per-hour').value) || 0;
+  state.settings.disposalPerTon            = parseFloat(document.getElementById('s-disposal-per-ton').value) || 0;
+  state.settings.minServiceTime            = parseFloat(document.getElementById('s-min-service-time').value) || 0;
+  state.settings.additionalTimePerContainer= parseFloat(document.getElementById('s-addl-time-per-container').value) || 0;
+  state.settings.epsilon                   = parseFloat(document.getElementById('clusterRadius').value) || 3;
   state.settings.minPoints         = parseInt(document.getElementById('minPoints').value) || 5;
   if (state.features.length) {
     recalcPricing();
@@ -302,66 +311,82 @@ window.processFile = async function() {
   state.activeSessionStorageRef = null;
   state.activeFileName          = file.name;
 
-  setProgress(true, 'Reading file…', 5);
-
-  let jsonData;
   try {
-    jsonData = await readExcel(file);
+    console.log('[processFile] starting, file:', file?.name, 'svcCodes:', state.svcCodes.length);
+    setProgress(true, 'Reading file…', 5);
+
+    let jsonData;
+    try {
+      console.log('[processFile] calling readExcel…');
+      jsonData = await readExcel(file);
+      console.log('[processFile] readExcel done, rows:', jsonData?.length);
+    } catch (e) {
+      console.error('[processFile] readExcel threw:', e);
+      setProgress(false);
+      alert('Could not read file: ' + e.message);
+      return;
+    }
+    if (!jsonData.length) { setProgress(false); alert('No data rows found.'); return; }
+
+    // Auto-populate service codes if table is empty
+    if (state.svcCodes.length === 0) {
+      console.log('[processFile] calling autoPopulateSvcCodes…');
+      try {
+        await autoPopulateSvcCodes(jsonData);
+        console.log('[processFile] autoPopulateSvcCodes done');
+      } catch (e) {
+        console.warn('autoPopulateSvcCodes save failed (local state still set):', e);
+      }
+    }
+
+    setProgress(true, 'Parsing locations…', 15);
+    const mode = document.querySelector('input[name="geocodeOption"]:checked').value;
+    let coords = [];
+
+    if (mode === 'latlong') {
+      coords = jsonData.map((row, i) => {
+        const lat = parseFloat(row['Latitude']  || row['latitude']  || row['lat'] || 0);
+        const lon = parseFloat(row['Longitude'] || row['longitude'] || row['lon'] || row['lng'] || 0);
+        return { lat, lon, rowIndex: i };
+      }).filter(c => c.lat && c.lon);
+    } else {
+      coords = await geocodeBatch(jsonData, (pct) => setProgress(true, `Geocoding ${pct}%…`, pct));
+    }
+
+    if (!coords.length) { setProgress(false); alert('No valid coordinates found.'); return; }
+
+    state.cachedCoords  = coords;
+    state.cachedRawRows = jsonData;
+
+    setProgress(true, 'Clustering…', 60);
+    const geojson    = buildGeojsonFromCache(coords, jsonData);
+    const clustered  = turf.clustersDbscan(geojson, epsilon, { minPoints, units: 'miles' });
+
+    setProgress(true, 'Computing nearest neighbors…', 75);
+    const orsKey = document.getElementById('s-ors-key').value.trim();
+    let features = clustered.features;
+    if (orsKey) {
+      features = await computeNNORS(features, orsKey, (p) => setProgress(true, `Drive times ${p}%…`, 75 + p * 0.2));
+    } else {
+      features = await computeNNOSRM(features, (p) => setProgress(true, `Drive times (OSRM) ${p}%…`, 75 + p * 0.2));
+    }
+
+    state.features = features;
+    recalcPricing();
+
+    state.pendingFile = null;
+    setProgress(false);
+    setExportEnabled(true);
+    document.getElementById('refresh-nn-btn').disabled = false;
+    updateSessionChip();
+    plotClusters();
+    renderProcessedData();
+    renderDashboard();
   } catch (e) {
     setProgress(false);
-    alert('Could not read file: ' + e.message);
-    return;
+    alert('Processing failed: ' + (e.message || e));
+    console.error('processFile error:', e);
   }
-  if (!jsonData.length) { setProgress(false); alert('No data rows found.'); return; }
-
-  // Auto-populate service codes if table is empty
-  if (state.svcCodes.length === 0) {
-    await autoPopulateSvcCodes(jsonData);
-  }
-
-  setProgress(true, 'Parsing locations…', 15);
-  const mode = document.querySelector('input[name="geocodeOption"]:checked').value;
-  let coords = [];
-
-  if (mode === 'latlong') {
-    coords = jsonData.map((row, i) => {
-      const lat = parseFloat(row['Latitude']  || row['latitude']  || row['lat'] || 0);
-      const lon = parseFloat(row['Longitude'] || row['longitude'] || row['lon'] || row['lng'] || 0);
-      return { lat, lon, rowIndex: i };
-    }).filter(c => c.lat && c.lon);
-  } else {
-    coords = await geocodeBatch(jsonData, (pct) => setProgress(true, `Geocoding ${pct}%…`, pct));
-  }
-
-  if (!coords.length) { setProgress(false); alert('No valid coordinates found.'); return; }
-
-  state.cachedCoords  = coords;
-  state.cachedRawRows = jsonData;
-
-  setProgress(true, 'Clustering…', 60);
-  const geojson    = buildGeojsonFromCache(coords, jsonData);
-  const clustered  = turf.clustersDbscan(geojson, epsilon, { minPoints, units: 'miles' });
-
-  setProgress(true, 'Computing nearest neighbors…', 75);
-  const orsKey = document.getElementById('s-ors-key').value.trim();
-  let features = clustered.features;
-  if (orsKey) {
-    features = await computeNNORS(features, orsKey, (p) => setProgress(true, `Drive times ${p}%…`, 75 + p * 0.2));
-  } else {
-    features = await computeNNOSRM(features, (p) => setProgress(true, `Drive times (OSRM) ${p}%…`, 75 + p * 0.2));
-  }
-
-  state.features = features;
-  recalcPricing();
-
-  state.pendingFile = null;
-  setProgress(false);
-  setExportEnabled(true);
-  document.getElementById('refresh-nn-btn').disabled = false;
-  updateSessionChip(); // show Save button; clear any old session name
-  plotClusters();
-  renderProcessedData();
-  renderDashboard();
 };
 
 // ── REFRESH DRIVE TIMES (ORS re-call only) ──────────────────────
@@ -396,14 +421,22 @@ async function readExcel(file) {
   return new Promise((res, rej) => {
     const reader = new FileReader();
     reader.onload = e => {
+      console.log('[readExcel] onload fired, byteLength:', e.target.result?.byteLength);
       try {
+        console.log('[readExcel] calling XLSX.read, XLSX defined:', typeof XLSX);
         const wb   = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
         const ws   = wb.Sheets[wb.SheetNames[0]];
         const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        console.log('[readExcel] parsed rows:', data.length);
         res(data);
-      } catch (err) { rej(err); }
+      } catch (err) {
+        console.error('[readExcel] parse error:', err);
+        rej(err);
+      }
     };
-    reader.onerror = rej;
+    reader.onerror = e => { console.error('[readExcel] onerror:', e); rej(e); };
+    reader.onabort = () => { console.error('[readExcel] onabort fired'); rej(new Error('File read aborted')); };
+    console.log('[readExcel] starting readAsArrayBuffer for:', file?.name, file?.size, 'bytes');
     reader.readAsArrayBuffer(file);
   });
 }
@@ -809,6 +842,14 @@ function getContainerSize(svcCode) {
   return null; // not in table — user must fill in the Service Codes tab
 }
 
+function getPoundsPerYard(svcCode) {
+  if (!svcCode) return null;
+  const code  = String(svcCode).toUpperCase().trim();
+  const entry = state.svcCodes.find(r => r.svcCode && r.svcCode.toUpperCase() === code);
+  if (entry && entry.poundsPerYard !== '' && entry.poundsPerYard != null) return parseFloat(entry.poundsPerYard);
+  return null;
+}
+
 function lookupCompPrice(clusterNum, contSize) {
   if (clusterNum == null || clusterNum < 0) return null;
   const cn = String(clusterNum);
@@ -842,7 +883,10 @@ function calcRowPricing(props) {
   const dist       = parseFloat(props['distance_to_nearest']) || 0;
   const clusterNum = props['cluster'] ?? -1;
 
-  const piPrice    = +(current * (1 + s.priceIncreaseRate)).toFixed(2);
+  let piPrice = current * (1 + s.priceIncreaseRate);
+  piPrice += Math.max(0, dist - s.epsilon) * s.extraChargePerMile;
+  piPrice = +piPrice.toFixed(2);
+
   const priceMatch = lookupCompPrice(clusterNum, contSize);
   const minPrice   = lookupMinPrice(contSize);
   let   prefPrice  = lookupPrefPrice(contSize) || 0;
@@ -853,12 +897,15 @@ function calcRowPricing(props) {
   if (mult > 1) prefAdj = (prefAdj * (mult - 1) * (1 - s.quantityDiscount) + prefAdj) / mult;
   prefAdj = +prefAdj.toFixed(2);
 
-  const ceiling = +(prefPrice * (1 + s.prefBuffer)).toFixed(2);
+  let ceiling = prefPrice * (1 + s.prefBuffer);
+  ceiling += Math.max(0, dist - s.epsilon) * s.extraChargePerMile;
+  if (mult > 1) ceiling = (ceiling * (mult - 1) * (1 - s.quantityDiscount) + ceiling) / mult;
+  ceiling = +ceiling.toFixed(2);
 
   let newRate;
   if (priceMatch !== null && current > priceMatch) {
-    // Hold — customer already beating competitor
-    newRate = current;
+    // Hold — customer already beating competitor, but still enforce min price floor
+    newRate = minPrice !== null ? Math.max(current, minPrice) : current;
   } else {
     let candidate = piPrice;
     if (priceMatch !== null) candidate = Math.max(candidate, priceMatch);
@@ -869,6 +916,14 @@ function calcRowPricing(props) {
 
   const dollarChange = +(newRate - current).toFixed(2);
   const pctChange    = current ? +((dollarChange / current) * 100).toFixed(1) : 0;
+
+  const poundsPerYard = getPoundsPerYard(svcCode);
+  const laborCost = +((Math.max(dist, s.minServiceTime) + ((mult - 1) * s.additionalTimePerContainer)) / 60 * 4.33 * s.costPerHour).toFixed(2);
+  const disposalCost = (contSize !== null && poundsPerYard !== null)
+    ? +(contSize * poundsPerYard / 2000 * s.disposalPerTon * 4.33).toFixed(2)
+    : 0;
+  const currentEbitdaPct = current ? +((current - laborCost - disposalCost) / current * 100).toFixed(1) : '';
+  const newEbitdaPct     = newRate  ? +((newRate  - laborCost - disposalCost) / newRate  * 100).toFixed(1) : '';
 
   return {
     contSize,
@@ -881,6 +936,10 @@ function calcRowPricing(props) {
     newRate,
     dollarChange,
     pctChange,
+    laborCost,
+    disposalCost,
+    currentEbitdaPct,
+    newEbitdaPct,
   };
 }
 
@@ -909,8 +968,12 @@ const PROC_COLS = [
   { key: 'prefPriceAdj',       label: 'Pref Price Adj',   type: '$',  calc: true },
   { key: 'ceiling',            label: 'Ceiling',          type: '$',  calc: true },
   { key: 'newRate',            label: 'New Rate',         type: '$',  calc: true },
-  { key: 'dollarChange',       label: '$ Change',         type: '$',  calc: true },
-  { key: 'pctChange',          label: '% Change',         type: 'pct',calc: true },
+  { key: 'dollarChange',       label: '$ Change',         type: '$',      calc: true },
+  { key: 'pctChange',          label: '% Change',         type: 'pct',    calc: true },
+  { key: 'laborCost',          label: 'Labor Cost',        type: '$',      calc: true },
+  { key: 'disposalCost',       label: 'Disposal Cost',     type: '$',      calc: true },
+  { key: 'currentEbitdaPct',   label: 'Current EBITDA %',  type: 'ebitda%',calc: true },
+  { key: 'newEbitdaPct',       label: 'New EBITDA %',       type: 'ebitda%',calc: true },
 ];
 
 function renderProcessedData() {
@@ -959,6 +1022,13 @@ function renderProcessedData() {
         const n = parseFloat(v) || 0;
         const cls2 = n > 0 ? 'pp-green' : n < 0 ? 'pp-red' : 'pp-blue';
         cell = `<span class="pct-pill ${cls2}">${n >= 0 ? '+' : ''}${n}%</span>`;
+      } else if (c.type === 'ebitda%') {
+        if (v === '' || v === null || v === undefined) { cell = '—'; }
+        else {
+          const n = parseFloat(v);
+          const cls2 = n > 0 ? 'pp-green' : n < 0 ? 'pp-red' : 'pp-blue';
+          cell = `<span class="pct-pill ${cls2}">${n.toFixed(1)}%</span>`;
+        }
       } else if (c.type === '$') {
         cell = v !== '' ? `$${parseFloat(v).toFixed(2)}` : '—';
       } else if (c.type === 'num') {
@@ -1140,7 +1210,7 @@ window.updatePrefRow = function(i, field, val) {
 function renderServiceCodes() {
   const tbody = document.getElementById('svc-tbody');
   if (!state.svcCodes.length) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#94A3B8;padding:16px">No service codes yet — upload a file to auto-populate, or add manually.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#94A3B8;padding:16px">No service codes yet — upload a file to auto-populate, or add manually.</td></tr>';
     return;
   }
   tbody.innerHTML = state.svcCodes.map((row, i) => {
@@ -1149,6 +1219,7 @@ function renderServiceCodes() {
     <tr>
       <td><span class="svc-badge">${esc(row.svcCode || '')}</span></td>
       <td><input class="td-input${missingSize ? ' input-required' : ''}" type="number" step="0.5" value="${row.contSize||''}" onchange="updateSvcRow(${i},'contSize',this.value)" placeholder="Required"></td>
+      <td><input class="td-input" type="number" step="1" value="${row.poundsPerYard||''}" onchange="updateSvcRow(${i},'poundsPerYard',this.value)" placeholder="Optional"></td>
       <td><input class="td-input" value="${esc(row.description||'')}" onchange="updateSvcRow(${i},'description',this.value)" placeholder="Optional description"></td>
       <td><button class="btn-icon btn-icon-danger" onclick="deleteSvcRow(${i})">×</button></td>
     </tr>`;
@@ -1156,7 +1227,7 @@ function renderServiceCodes() {
 }
 
 window.addSvcRow = function() {
-  state.svcCodes.push({ svcCode: '', contSize: '', description: '' });
+  state.svcCodes.push({ svcCode: '', contSize: '', poundsPerYard: '', description: '' });
   // For manually-added rows, allow editing the svcCode too
   const tbody = document.getElementById('svc-tbody');
   const i = state.svcCodes.length - 1;
@@ -1164,6 +1235,7 @@ window.addSvcRow = function() {
   tr.innerHTML = `
     <td><input class="td-input" value="" onchange="updateSvcRow(${i},'svcCode',this.value)" placeholder="e.g. F2Y1W1"></td>
     <td><input class="td-input" type="number" step="0.5" value="" onchange="updateSvcRow(${i},'contSize',this.value)" placeholder="e.g. 2"></td>
+    <td><input class="td-input" type="number" step="1" value="" onchange="updateSvcRow(${i},'poundsPerYard',this.value)" placeholder="Optional"></td>
     <td><input class="td-input" value="" onchange="updateSvcRow(${i},'description',this.value)" placeholder="Optional description"></td>
     <td><button class="btn-icon btn-icon-danger" onclick="deleteSvcRow(${i})">×</button></td>`;
   tbody.appendChild(tr);
@@ -1194,7 +1266,7 @@ async function autoPopulateSvcCodes(jsonData) {
     const code = (row['Svc_Code_Alpha'] || '').trim();
     if (code && !seen.has(code)) {
       seen.add(code);
-      codes.push({ svcCode: code, contSize: '', description: '' });
+      codes.push({ svcCode: code, contSize: '', poundsPerYard: '', description: '' });
     }
   });
   state.svcCodes = codes;
