@@ -53,6 +53,7 @@ requireAuth(async (firebaseUser, userDoc) => {
   document.getElementById('user-avatar').textContent = initials;
   document.getElementById('user-name').textContent   = userDoc.displayName || userDoc.email;
   document.getElementById('user-role').textContent   = userDoc.role === 'superuser' ? 'Super Admin' : 'User';
+  if (userDoc.role === 'superuser') document.getElementById('btn-admin').style.display = '';
 
   // Load all company data in parallel
   const [settings, compAreas, minPrices, prefPrices, svcCodes, sessions] = await Promise.all([
