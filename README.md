@@ -40,7 +40,7 @@ A multi-tenant SaaS web application that helps waste & recycling service compani
 | **Price Match** | Comp Area price for this cluster + container size (if found) |
 | **Min Price** | Minimum base price for this container size |
 | **Pref Price Adj** | Preferred price adjusted for quantity discount and outlier surcharge |
-| **Ceiling** | `Pref Price Adj × (1 + Pref Buffer)` |
+| **Ceiling** | `Preferred Price × (1 + Pref Buffer)` |
 | **New Rate** | `max(Min Price, min(Ceiling, max(PI'd Price, Price Match)))` |
 | **$ Change** | `New Rate − Current Amount` |
 | **% Change** | `$ Change / Current Amount × 100` |

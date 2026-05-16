@@ -853,7 +853,7 @@ function calcRowPricing(props) {
   if (mult > 1) prefAdj = (prefAdj * (mult - 1) * (1 - s.quantityDiscount) + prefAdj) / mult;
   prefAdj = +prefAdj.toFixed(2);
 
-  const ceiling = +(prefAdj * (1 + s.prefBuffer)).toFixed(2);
+  const ceiling = +(prefPrice * (1 + s.prefBuffer)).toFixed(2);
 
   let newRate;
   if (priceMatch !== null && current > priceMatch) {
